@@ -577,6 +577,22 @@ def home_page(df: pd.DataFrame, start: date, end: date) -> None:
     if not display_name:
         display_name = st.user.get("email", "").split("@", 1)[0] or "por aqui"
     render_dashboard_welcome(company_id, display_name)
+    with st.expander("Skopos na área de trabalho", icon=":material/desktop_windows:"):
+        st.write(
+            "Baixe o atalho para Windows e salve na área de trabalho. "
+            "Se ele for salvo em Downloads, mova o arquivo Skopos.url para a área de trabalho. "
+            "Depois, dê dois cliques para abrir o Skopos no navegador."
+        )
+        st.download_button(
+            "Baixar atalho para Windows",
+            data=(ASSETS_DIR / "Skopos.url").read_bytes(),
+            file_name="Skopos.url",
+            mime="application/octet-stream",
+            icon=":material/download:",
+            on_click="ignore",
+            key="download_desktop_shortcut",
+        )
+        st.caption("Requer conexão com a internet. O login continua sendo feito com sua conta Google.")
     start, end = render_period_filter(start, end)
 
     raw_shortcuts = get_app_setting("home_shortcuts", company_id)

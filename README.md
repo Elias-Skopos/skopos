@@ -41,6 +41,8 @@ O banco `livraria.db` é criado automaticamente. As pastas `backup_*` são cópi
 
 ### Atalho do Windows
 
+Na **Home → Skopos na área de trabalho**, qualquer usuário pode baixar `Skopos.url`. Salve na área de trabalho ou mova o arquivo de Downloads para lá. Dois cliques abrem `https://skopos.streamlit.app/` no navegador padrão, com acesso pela internet e login Google. Esse atalho não instala o app nem inicia o servidor local.
+
 Nesta instalação, o atalho **Skopos** da área de trabalho executa `../iniciar_skopos.pyw` com `pythonw.exe`, sem abrir terminal. O iniciador abre o navegador quando o servidor responde e reutiliza um servidor já ativo na porta 8501. Fechar a guia não encerra o servidor.
 
 O atalho usa `C:\Program Files\Python313\pythonw.exe` e precisa ser ajustado em outro computador. Instale as dependências no mesmo Python usado pelo atalho. Falhas são registradas em `skopos/inicializacao.log`.
