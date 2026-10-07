@@ -659,9 +659,6 @@ def home_page(df: pd.DataFrame, start: date, end: date) -> None:
 
 def account_settings_page() -> None:
     page_header("Gestão da plataforma", "Conta", "Dados da sua conta e configurações da empresa selecionada.")
-    if can_manage_team:
-        with st.expander("Equipe", expanded=st.session_state.get("account_team_expanded", False)):
-            team_page(show_header=False)
     account_name = st.user.get("name", "") or "Conta Google"
     account_email = st.user.get("email", "")
     st.subheader(account_name)
@@ -669,6 +666,10 @@ def account_settings_page() -> None:
         st.caption(account_email)
     st.write(f"**Empresa:** {company_name}")
     st.write(f"**Perfil:** {ROLE_LABELS.get(membership_role, 'Colaborador')}")
+
+    if can_manage_team:
+        with st.expander("Equipe", expanded=st.session_state.get("account_team_expanded", False)):
+            team_page(show_header=False)
 
     if can_edit:
         render_company_cover_settings(company_id)
