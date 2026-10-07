@@ -22,6 +22,26 @@ def inject_css(dark_mode: bool = False) -> None:
           --nav-group-border: #cbd0e6;
         }
         .stApp { background: #f8f8ff; }
+        /* Remove os controles da hospedagem que cobrem a barra do Skopos. */
+        [data-testid="stHeader"] {
+            background: transparent !important;
+            height: 0 !important;
+            pointer-events: none !important;
+        }
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"],
+        [data-testid="stAppDeployButton"],
+        [data-testid="stStatusWidget"],
+        [data-testid="stCloudViewerBadge"],
+        .viewerBadge_container__r5tak,
+        .viewerBadge_link__qRIco,
+        #MainMenu, footer {
+            display: none !important;
+        }
+        [data-testid="stExpandSidebarButton"],
+        [data-testid="stSidebarCollapseButton"] {
+            pointer-events: auto !important;
+        }
         .block-container { max-width: 1440px; padding-top: 5.5rem; padding-bottom: 3rem; }
         .st-key-app_topbar {
             position: fixed; top: 0; left: 0; right: 0; z-index: 1000;

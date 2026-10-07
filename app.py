@@ -320,6 +320,9 @@ def go_to_overview() -> None:
 
 
 def navigate_to(page: str) -> None:
+    if page == "Equipe":
+        st.session_state["account_team_expanded"] = True
+        page = "Conta"
     st.session_state["active_page"] = page
     st.query_params["page"] = page
 
@@ -388,6 +391,15 @@ def account_menu() -> None:
                     st.caption(account_email)
                 st.caption(f"Empresa ativa: {company_name}")
                 st.caption(f"Perfil: {ROLE_LABELS.get(membership_role, 'Colaborador')}")
+                if can_manage_team:
+                    st.button(
+                        "Equipe",
+                        icon=":material/groups:",
+                        key="account_team_button",
+                        on_click=navigate_to,
+                        args=("Equipe",),
+                        width="stretch",
+                    )
                 if len(user_companies) > 1:
                     st.divider()
                     st.caption("Mudar empresa / perfil")
@@ -463,7 +475,7 @@ def collapsed_nav_rail(role: str) -> None:
             "Visão geral", "Curva ABC", "Relatórios", "Fluxo de caixa", "Contas", "Insights com IA",
         ],
         "Alimentar e planejar": ["Vendas e estoque", "Lançamentos", "Orçamento"] if role in {"administrator", "manager"} else [],
-        "Gestão da Plataforma": ["API do Horus", "Configuração de IA", "Conta", "Equipe"] if role == "administrator" else [],
+        "Gestão da Plataforma": ["API do Horus", "Configuração de IA", "Conta"] if role == "administrator" else [],
     }
     groups = {group: destinations for group, destinations in groups.items() if destinations}
     group_icons = {
@@ -602,6 +614,9 @@ def home_page(df: pd.DataFrame, start: date, end: date) -> None:
 
 def account_settings_page() -> None:
     page_header("Gestão da plataforma", "Conta", "Dados da sua conta e configurações da empresa selecionada.")
+    if can_manage_team:
+        with st.expander("Equipe", expanded=st.session_state.get("account_team_expanded", False)):
+            team_page(show_header=False)
     account_name = st.user.get("name", "") or "Conta Google"
     account_email = st.user.get("email", "")
     st.subheader(account_name)
@@ -880,11 +895,12 @@ def sidebar() -> tuple[str, date, date, int]:
                 ("API do Horus", "API do Horus"),
                 ("Configuração de IA", "Configuração de IA"),
                 ("Conta", "Conta"),
-                ("Equipe", "Equipe"),
             ])
         old_page = st.query_params.get("page") or st.session_state.get("page_navigation", "Home")
         old_page_map = {"Configuração de API": "API do Horus"}
         st.session_state.setdefault("active_page", old_page_map.get(old_page, old_page))
+        if st.session_state["active_page"] == "Equipe":
+            navigate_to("Equipe")
         if selected_membership["role"] not in {"administrator", "manager"}:
             data_pages = []
         available_pages = {"Home"} | {target for _, target in view_pages + data_pages + platform_pages}
@@ -1608,15 +1624,28 @@ def api_configuration_page() -> None:
         )
 
 
-def team_page() -> None:
-    page_header(
-        "Acesso da empresa",
-        "Equipe",
-        "Gerencie quem pode consultar e operar os dados desta livraria.",
-    )
+def team_page(show_header: bool = True) -> None:
+    if show_header:
+        page_header(
+            "Acesso da empresa",
+            "Equipe",
+            "Gerencie quem pode consultar e operar os dados desta livraria.",
+        )
     if not can_manage_team:
         st.error("Somente um administrador/suporte desta empresa pode gerenciar os acessos.")
         return
+
+    notice_key = f"team_invite_notice_{company_id}"
+    notice = st.session_state.get(notice_key)
+    if notice:
+        level, message = notice
+        if st.button("Fechar mensagem", key=f"dismiss_team_notice_{company_id}"):
+            st.session_state.pop(notice_key, None)
+        else:
+            if level == "success":
+                st.success(message)
+            else:
+                st.info(message)
 
     st.caption(
         "Administrador/suporte e gestor podem operar os dados. Colaborador tem acesso somente para consulta. "
@@ -1646,13 +1675,16 @@ def team_page() -> None:
                     company_id, invite_email, invite_role, identity_issuer, identity_subject
                 )
                 if result == "already_member":
-                    st.info("Essa pessoa já tem acesso à empresa.")
+                    st.session_state[notice_key] = ("info", "Essa pessoa já tem acesso à empresa.")
                 elif result == "added":
-                    st.success("Pessoa adicionada à equipe.")
-                    st.rerun()
+                    st.session_state[notice_key] = ("success", "Pessoa adicionada à equipe.")
                 else:
-                    st.success("Convite registrado. A pessoa receberá acesso quando entrar com o Google usando esse e-mail.")
-                    st.rerun()
+                    st.session_state[notice_key] = (
+                        "success",
+                        "Convite registrado. A pessoa receberá acesso quando entrar com o Google usando esse e-mail.",
+                    )
+                st.session_state["account_team_expanded"] = True
+                st.rerun()
             except (ValueError, PermissionError) as exc:
                 st.error(str(exc))
 
