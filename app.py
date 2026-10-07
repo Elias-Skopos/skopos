@@ -615,7 +615,7 @@ def home_page(df: pd.DataFrame, start: date, end: date) -> None:
         )
         st.download_button(
             "Baixar atalho para Windows",
-            data=(ASSETS_DIR / "Skopos.url").read_bytes(),
+            data=b"[InternetShortcut]\r\nURL=https://skopos.streamlit.app/\r\n",
             file_name="Skopos.url",
             mime="application/octet-stream",
             icon=":material/download:",
