@@ -23,12 +23,19 @@ def inject_css(dark_mode: bool = False) -> None:
         }
         .stApp { background: #f8f8ff; }
         /* Remove os controles da hospedagem que cobrem a barra do Skopos. */
-        [data-testid="stHeader"] {
+        [data-testid="stHeader"], .stAppHeader {
+            visibility: hidden !important;
             background: transparent !important;
             height: 0 !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+            box-shadow: none !important;
             pointer-events: none !important;
         }
-        [data-testid="stToolbar"],
+        [data-testid="stToolbar"], .stAppToolbar,
+        [data-testid="stToolbarActions"], .stToolbarActions,
+        [data-testid="stMainMenu"], .stMainMenu,
         [data-testid="stDecoration"],
         [data-testid="stAppDeployButton"],
         [data-testid="stStatusWidget"],
@@ -40,6 +47,7 @@ def inject_css(dark_mode: bool = False) -> None:
         }
         [data-testid="stExpandSidebarButton"],
         [data-testid="stSidebarCollapseButton"] {
+            visibility: visible !important;
             pointer-events: auto !important;
         }
         .block-container { max-width: 1440px; padding-top: 5.5rem; padding-bottom: 3rem; }
