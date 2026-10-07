@@ -21,10 +21,10 @@ Documentação atualizada em 07/10/2026. As mudanças locais precisam ser enviad
 - **Acompanhamento:** Visão geral, Curva ABC, Relatórios, Fluxo de caixa, Contas e Insights com IA.
 - **Alimentar e planejar:** Vendas e estoque, Lançamentos e Orçamento, disponíveis para administrador e gestor.
 - **Gestão da Plataforma:** API do Horus, Configuração de IA e Conta, disponíveis para administrador.
-- **Conta → Equipe:** inclusão de pessoas, convites pendentes, alteração de perfil e remoção de acesso. Também há um acesso a Equipe no menu Conta da barra superior.
+- **Conta → Equipe:** inclusão de pessoas, convites pendentes, alteração de perfil e remoção de acesso. A gestão da equipe fica dentro de Conta em Gestão da Plataforma.
 - **Conta:** configurações de capa, atalhos e perfil da empresa, conforme as permissões.
 
-Há modo claro/escuro e ocultação dos valores na Home e na Visão geral. O logo da barra lateral retorna à Home na mesma guia. As imagens da marca ficam em `assets/logo_login.png` (login) e `assets/Logo_barra_lateral.png` (barra lateral).
+O filtro de período compartilhado aparece em um botão compacto à direita; as datas são editadas ao abrir o calendário. Há modo claro/escuro e ocultação dos valores na Home e na Visão geral. O logo da barra lateral retorna à Home na mesma guia. As imagens da marca ficam em `assets/logo_login.png` (login) e `assets/Logo_barra_lateral.png` (barra lateral).
 
 O CSS tenta ocultar os controles e o selo do Streamlit Cloud para evitar sobreposição com a barra do Skopos. O resultado deve ser conferido na hospedagem após atualizações do Streamlit.
 
@@ -41,7 +41,7 @@ O banco `livraria.db` é criado automaticamente. As pastas `backup_*` são cópi
 
 ### Atalho do Windows
 
-Na **Home → Skopos na área de trabalho**, qualquer usuário pode baixar `Skopos.url`. Salve na área de trabalho ou mova o arquivo de Downloads para lá. Dois cliques abrem `https://skopos.streamlit.app/` no navegador padrão, com acesso pela internet e login Google. Esse atalho não instala o app nem inicia o servidor local.
+No botão **Atalho desktop**, ao lado de Conta na barra superior, qualquer usuário pode baixar `Skopos.url`. Salve na área de trabalho ou mova o arquivo de Downloads para lá. Dois cliques abrem `https://skopos.streamlit.app/` no navegador padrão, com acesso pela internet e login Google. Esse atalho não instala o app nem inicia o servidor local.
 
 Nesta instalação, o atalho **Skopos** da área de trabalho executa `../iniciar_skopos.pyw` com `pythonw.exe`, sem abrir terminal. O iniciador abre o navegador quando o servidor responde e reutiliza um servidor já ativo na porta 8501. Fechar a guia não encerra o servidor.
 

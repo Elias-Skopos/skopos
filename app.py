@@ -80,7 +80,6 @@ header[data-testid="stHeader"], header.stAppHeader {
     border: 0 !important;
     box-shadow: none !important;
 }
-[data-testid="stToolbar"], .stAppToolbar,
 [data-testid="stToolbarActions"], .stToolbarActions,
 [data-testid="stMainMenu"], .stMainMenu,
 [data-testid="stDecoration"],
@@ -89,6 +88,13 @@ header[data-testid="stHeader"], header.stAppHeader {
 [data-testid="stCloudViewerBadge"],
 #MainMenu, footer {
     display: none !important;
+}
+[data-testid="stToolbar"], .stAppToolbar {
+    visibility: hidden !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    background: transparent !important;
+    pointer-events: none !important;
 }
 [data-testid="stExpandSidebarButton"] {
     position: fixed !important;
@@ -413,6 +419,16 @@ def account_menu() -> None:
             on_click=toggle_dark_mode,
             width="content",
         )
+        st.download_button(
+            "Atalho desktop",
+            data=b"[InternetShortcut]\r\nURL=https://skopos.streamlit.app/\r\n",
+            file_name="Skopos.url",
+            mime="application/octet-stream",
+            icon=":material/download:",
+            help="Baixe para Windows e mova Skopos.url para a área de trabalho.",
+            on_click="ignore",
+            key="download_desktop_shortcut",
+        )
         with st.popover("Conta", icon=":material/account_circle:", width="content"):
                 account_name = st.user.get("name", "") or "Conta Google"
                 account_email = st.user.get("email", "")
@@ -421,15 +437,6 @@ def account_menu() -> None:
                     st.caption(account_email)
                 st.caption(f"Empresa ativa: {company_name}")
                 st.caption(f"Perfil: {ROLE_LABELS.get(membership_role, 'Colaborador')}")
-                if can_manage_team:
-                    st.button(
-                        "Equipe",
-                        icon=":material/groups:",
-                        key="account_team_button",
-                        on_click=navigate_to,
-                        args=("Equipe",),
-                        width="stretch",
-                    )
                 if len(user_companies) > 1:
                     st.divider()
                     st.caption("Mudar empresa / perfil")
@@ -607,22 +614,6 @@ def home_page(df: pd.DataFrame, start: date, end: date) -> None:
     if not display_name:
         display_name = st.user.get("email", "").split("@", 1)[0] or "por aqui"
     render_dashboard_welcome(company_id, display_name)
-    with st.expander("Skopos na área de trabalho", icon=":material/desktop_windows:"):
-        st.write(
-            "Baixe o atalho para Windows e salve na área de trabalho. "
-            "Se ele for salvo em Downloads, mova o arquivo Skopos.url para a área de trabalho. "
-            "Depois, dê dois cliques para abrir o Skopos no navegador."
-        )
-        st.download_button(
-            "Baixar atalho para Windows",
-            data=b"[InternetShortcut]\r\nURL=https://skopos.streamlit.app/\r\n",
-            file_name="Skopos.url",
-            mime="application/octet-stream",
-            icon=":material/download:",
-            on_click="ignore",
-            key="download_desktop_shortcut",
-        )
-        st.caption("Requer conexão com a internet. O login continua sendo feito com sua conta Google.")
     start, end = render_period_filter(start, end)
 
     raw_shortcuts = get_app_setting("home_shortcuts", company_id)
@@ -870,37 +861,38 @@ def render_period_filter(start: date, end: date) -> tuple[date, date]:
     st.session_state.setdefault("period_start_input", current_start)
     st.session_state.setdefault("period_end_input", current_end)
     st.session_state.setdefault("period_range_picker", (current_start, current_end))
-    with st.container(border=True):
-        st.caption("Período")
-        date_start_col, date_end_col, range_col = st.columns([1, 1, .8], vertical_alignment="bottom")
-        with date_start_col:
-            st.date_input(
-                "Data inicial",
-                key="period_start_input",
-                format="DD/MM/YYYY",
-                on_change=mark_period_field_changed,
-                args=("start",),
-                persist_state="session",
-            )
-        with date_end_col:
-            st.date_input(
-                "Data final",
-                key="period_end_input",
-                format="DD/MM/YYYY",
-                on_change=mark_period_field_changed,
-                args=("end",),
-                persist_state="session",
-            )
-        with range_col:
-            with st.popover("Selecionar intervalo", icon=":material/date_range:", width="stretch"):
-                st.caption("Também é possível selecionar o intervalo arrastando pelo calendário.")
+    with st.container(horizontal=True, horizontal_alignment="right", key="period_filter_row"):
+        with st.popover(f"{current_start:%d/%m/%Y} — {current_end:%d/%m/%Y}", icon=":material/date_range:", width="content"):
+            st.caption("Período")
+            date_start_col, date_end_col = st.columns(2, vertical_alignment="bottom")
+            with date_start_col:
                 st.date_input(
-                    "Intervalo no calendário",
-                    key="period_range_picker",
+                    "Data inicial",
+                    key="period_start_input",
                     format="DD/MM/YYYY",
-                    on_change=sync_period_from_picker,
+                    on_change=mark_period_field_changed,
+                    args=("start",),
                     persist_state="session",
                 )
+            with date_end_col:
+                st.date_input(
+                    "Data final",
+                    key="period_end_input",
+                    format="DD/MM/YYYY",
+                    on_change=mark_period_field_changed,
+                    args=("end",),
+                    persist_state="session",
+                )
+            with st.container():
+                with st.container():
+                    st.caption("Também é possível selecionar o intervalo arrastando pelo calendário.")
+                    st.date_input(
+                        "Intervalo no calendário",
+                        key="period_range_picker",
+                        format="DD/MM/YYYY",
+                        on_change=sync_period_from_picker,
+                        persist_state="session",
+                    )
     return normalize_period(st.session_state["global_period"])
 
 

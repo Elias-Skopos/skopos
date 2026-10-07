@@ -32,7 +32,6 @@ def inject_css(dark_mode: bool = False) -> None:
             border: 0 !important;
             box-shadow: none !important;
         }
-        [data-testid="stToolbar"], .stAppToolbar,
         [data-testid="stToolbarActions"], .stToolbarActions,
         [data-testid="stMainMenu"], .stMainMenu,
         [data-testid="stDecoration"],
@@ -43,6 +42,13 @@ def inject_css(dark_mode: bool = False) -> None:
         .viewerBadge_link__qRIco,
         #MainMenu, footer {
             display: none !important;
+        }
+        [data-testid="stToolbar"], .stAppToolbar {
+            visibility: hidden !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            background: transparent !important;
+            pointer-events: none !important;
         }
         [data-testid="stExpandSidebarButton"],
         [data-testid="stSidebarCollapseButton"] {
@@ -249,6 +255,22 @@ def inject_css(dark_mode: bool = False) -> None:
         div[data-testid="stMetric"] { background:white; border:1px solid var(--border); padding:14px; border-radius:14px; }
         div[data-testid="stDataFrame"] { border:1px solid var(--border); border-radius:14px; overflow:hidden; }
         .stButton > button, .stDownloadButton > button { border-radius: 10px; font-weight: 650; }
+        .stApp { --primary-color: #625fe9; }
+        .stButton > button:hover, .stDownloadButton > button:hover,
+        [data-testid="stPopoverButton"]:hover {
+            color: #514ed5 !important; border-color: #625fe9 !important;
+        }
+        .stButton > button:focus-visible, .stDownloadButton > button:focus-visible {
+            outline: 2px solid #625fe9 !important; border-color: #625fe9 !important;
+        }
+        button[kind="primary"], button[kind="primaryFormSubmit"],
+        [data-testid="stBaseButton-primary"],
+        [data-testid="stBaseButton-primaryFormSubmit"] {
+            background: #625fe9 !important; color: #fff !important; border-color: #625fe9 !important;
+        }
+        button[kind="primary"]:hover, button[kind="primaryFormSubmit"]:hover {
+            background: #514ed5 !important; color: #fff !important;
+        }
         @media (max-width: 700px) {
             .st-key-app_topbar { left: 0; padding: .25rem .45rem .45rem; }
             .block-container { padding-top: 5rem; }
