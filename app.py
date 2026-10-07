@@ -847,7 +847,7 @@ def sidebar() -> tuple[str, date, date, int]:
     with st.sidebar:
         sidebar_logo = base64.b64encode((ASSETS_DIR / "Logo_barra_lateral.png").read_bytes()).decode("ascii")
         st.markdown(
-            f'<a href="?page=Home" title="Ir para a Home" aria-label="Ir para a Home" '
+            f'<a href="?page=Home" target="_self" title="Ir para a Home" aria-label="Ir para a Home" '
             f'style="display:block;width:100%;max-width:280px;margin:0 auto 12px;">'
             f'<img src="data:image/png;base64,{sidebar_logo}" alt="Skopos — Gestão à vista" '
             f'style="display:block;width:100%;height:auto;object-fit:contain;"></a>',
