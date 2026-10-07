@@ -1,0 +1,25 @@
+/* Controles da hospedagem: carregado antes do login e em toda execução. */
+header[data-testid="stHeader"], header.stAppHeader {
+    display: contents !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+[data-testid="stToolbar"], .stAppToolbar,
+[data-testid="stToolbarActions"], .stToolbarActions,
+[data-testid="stMainMenu"], .stMainMenu,
+[data-testid="stDecoration"],
+[data-testid="stAppDeployButton"],
+[data-testid="stStatusWidget"],
+[data-testid="stCloudViewerBadge"],
+#MainMenu, footer {
+    display: none !important;
+}
+[data-testid="stExpandSidebarButton"] {
+    position: fixed !important;
+    top: .5rem !important;
+    left: .5rem !important;
+    z-index: 1002 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}

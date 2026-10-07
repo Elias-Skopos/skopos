@@ -24,14 +24,13 @@ def inject_css(dark_mode: bool = False) -> None:
         .stApp { background: #f8f8ff; }
         /* Remove os controles da hospedagem que cobrem a barra do Skopos. */
         [data-testid="stHeader"], .stAppHeader {
-            visibility: hidden !important;
+            display: contents !important;
             background: transparent !important;
             height: 0 !important;
             min-height: 0 !important;
             padding: 0 !important;
             border: 0 !important;
             box-shadow: none !important;
-            pointer-events: none !important;
         }
         [data-testid="stToolbar"], .stAppToolbar,
         [data-testid="stToolbarActions"], .stToolbarActions,

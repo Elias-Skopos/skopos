@@ -71,6 +71,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# CSS global independente dos estilos de cada página e carregado antes do login.
+st.html(ASSETS_DIR / "app_chrome.css")
+
 
 def configured_identity_providers() -> list[tuple[str, str]]:
     try:
