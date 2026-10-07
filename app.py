@@ -8,6 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
 import os
+import zipfile
 
 import pandas as pd
 import plotly.express as px
@@ -382,6 +383,13 @@ def logout_user() -> None:
     st.logout()
 
 
+def desktop_shortcut_zip() -> bytes:
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("Skopos.url", "[InternetShortcut]\r\nURL=https://skopos.streamlit.app/\r\n")
+    return output.getvalue()
+
+
 def account_menu() -> None:
     st.session_state.setdefault("hide_financial_values", True)
     dark_mode = st.session_state.get("dark_mode", False)
@@ -421,11 +429,11 @@ def account_menu() -> None:
         )
         st.download_button(
             "Atalho desktop",
-            data=b"[InternetShortcut]\r\nURL=https://skopos.streamlit.app/\r\n",
-            file_name="Skopos.url",
-            mime="application/octet-stream",
+            data=desktop_shortcut_zip(),
+            file_name="Skopos-Atalho.zip",
+            mime="application/zip",
             icon=":material/download:",
-            help="Baixe para Windows e mova Skopos.url para a área de trabalho.",
+            help="Baixe o ZIP, extraia Skopos.url e mova o atalho para a área de trabalho do Windows.",
             on_click="ignore",
             key="download_desktop_shortcut",
         )
