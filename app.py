@@ -72,7 +72,34 @@ st.set_page_config(
 )
 
 # CSS global independente dos estilos de cada página e carregado antes do login.
-st.html(ASSETS_DIR / "app_chrome.css")
+st.html("""
+<style>
+header[data-testid="stHeader"], header.stAppHeader {
+    display: contents !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+[data-testid="stToolbar"], .stAppToolbar,
+[data-testid="stToolbarActions"], .stToolbarActions,
+[data-testid="stMainMenu"], .stMainMenu,
+[data-testid="stDecoration"],
+[data-testid="stAppDeployButton"],
+[data-testid="stStatusWidget"],
+[data-testid="stCloudViewerBadge"],
+#MainMenu, footer {
+    display: none !important;
+}
+[data-testid="stExpandSidebarButton"] {
+    position: fixed !important;
+    top: .5rem !important;
+    left: .5rem !important;
+    z-index: 1002 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+</style>
+""")
 
 
 def configured_identity_providers() -> list[tuple[str, str]]:
