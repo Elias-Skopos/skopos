@@ -10,6 +10,7 @@ def inject_css(dark_mode: bool = False) -> None:
         <style>
         :root {
           --surface: #ffffff;
+          --app-bg: #f8f8ff;
           --surface-2: #f2f3ff;
           --border: #e4e5f5;
           --text: #17191f;
@@ -21,7 +22,11 @@ def inject_css(dark_mode: bool = False) -> None:
           --nav-group-text: #343b50;
           --nav-group-border: #cbd0e6;
         }
-        .stApp { background: #f8f8ff; }
+        .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+            background: var(--app-bg); color: var(--text); color-scheme: light;
+        }
+        [data-testid="stSidebar"] { background: #f5f5ff; color: var(--text); }
+        h1, h2, h3, h4, label, [data-testid="stWidgetLabel"] { color: var(--text); }
         /* Remove os controles da hospedagem que cobrem a barra do Skopos. */
         [data-testid="stHeader"], .stAppHeader {
             display: contents !important;
@@ -59,7 +64,7 @@ def inject_css(dark_mode: bool = False) -> None:
         .st-key-app_topbar {
             position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
             box-sizing: border-box; width: 100%;
-            background: linear-gradient(to right, transparent 21rem, #f8f8ff 21rem);
+            background: var(--app-bg);
             padding: .35rem 1.5rem .55rem; margin: 0;
             border-bottom: 1px solid var(--border); box-shadow: 0 2px 8px rgba(23,25,31,.04);
             pointer-events: none;
@@ -272,9 +277,29 @@ def inject_css(dark_mode: bool = False) -> None:
             background: #514ed5 !important; color: #fff !important;
         }
         @media (max-width: 700px) {
-            .st-key-app_topbar { left: 0; padding: .25rem .45rem .45rem; }
-            .block-container { padding-top: 5rem; }
-            .st-key-app_topbar [data-testid="stBaseButton"] { padding-left: .35rem; padding-right: .35rem; }
+            .st-key-app_topbar { left: 0; padding: .35rem .5rem .35rem 3.3rem; gap: .35rem; }
+            .st-key-app_topbar > div { min-width: 0; }
+            .block-container { padding: 4.5rem 1rem 2rem; }
+            .st-key-app_topbar button { min-height: 44px; padding: .4rem .5rem; }
+            .st-key-top_home_button button p,
+            .st-key-toggle_overview_values button p,
+            .st-key-app_topbar [data-testid="stPopoverButton"] p {
+                position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+                overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+            }
+            .st-key-download_desktop_shortcut { display: none !important; }
+            body:has([data-testid="stSidebar"][aria-expanded="false"]) .st-key-collapsed_nav_rail,
+            body:has([data-testid="stSidebar"][aria-expanded="false"]) .st-key-collapsed_nav_rail_expanded {
+                display: none !important;
+            }
+            .kpi { padding: 14px; min-height: 110px; }
+            .kpi-value { font-size: 1.5rem; overflow-wrap: anywhere; }
+            [data-testid="stCaptionContainer"] p { white-space: normal; overflow-wrap: anywhere; }
+            .eyebrow { font-size: 1rem; }
+            h1 { font-size: 1.9rem; }
+            [data-testid="stTabs"] [role="tablist"] { overflow-x: auto; }
+            [data-testid="stFileUploader"] section { flex-wrap: wrap; }
+            [data-testid="stSidebar"] { max-width: calc(100vw - 3rem); }
             .st-key-toggle_dark_mode_topbar_light button, .st-key-toggle_dark_mode_topbar_dark button {
                 width: 4.1rem; min-width: 4.1rem;
             }
@@ -289,6 +314,7 @@ def inject_css(dark_mode: bool = False) -> None:
             <style>
             :root {
               --surface: #1b2432;
+              --app-bg: #111722;
               --surface-2: #242e3e;
               --border: #354154;
               --text: #edf1f7;
@@ -299,11 +325,11 @@ def inject_css(dark_mode: bool = False) -> None:
               --nav-group-border: #46536a;
             }
             .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
-              background: #111722; color: #edf1f7;
+              background: #111722; color: #edf1f7; color-scheme: dark;
             }
             [data-testid="stSidebar"] { background: #151d2a; border-color: #303b4d; }
             .st-key-app_topbar {
-              background: linear-gradient(to right, transparent 21rem, #111722 21rem) !important;
+              background: #111722 !important;
               border-color: #303b4d;
             }
             body:has([data-testid="stSidebar"][aria-expanded="false"]) .st-key-app_topbar {
@@ -337,7 +363,10 @@ def inject_css(dark_mode: bool = False) -> None:
               background: #625fe9 !important; color: #fff !important; border-color: #625fe9 !important;
             }
             [data-testid="stBaseButton-secondary"] {
-              background: transparent !important; color: #d5dbea !important; border-color: transparent !important;
+              background: #202b3a !important; color: #d5dbea !important; border-color: #3a465a !important;
+            }
+            [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
+              background: transparent !important; border-color: transparent !important;
             }
             [data-testid="stBaseButton-secondary"]:hover {
               background: #273247 !important; color: #fff !important;
@@ -377,6 +406,11 @@ def inject_css(dark_mode: bool = False) -> None:
               background: #292b52 !important; color: #d7d5ff !important;
               border-left-color: #8b87ff !important;
             }
+            [data-testid="stPopoverButton"] {
+              background: #202b3a !important; color: #edf1f7 !important; border-color: #46536a !important;
+            }
+            [data-testid="stVerticalBlock"] { border-color: #354154; }
+            .st-key-sidebar_logo img { filter: brightness(0) invert(1); }
             </style>
             """,
             unsafe_allow_html=True,
@@ -385,6 +419,19 @@ def inject_css(dark_mode: bool = False) -> None:
 
 def money(value: float) -> str:
     return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def render_plotly(fig) -> None:
+    dark = st.session_state.get("dark_mode", False)
+    background = "#111722" if dark else "#f8f8ff"
+    text = "#edf1f7" if dark else "#17191f"
+    grid = "#354154" if dark else "#e4e5f5"
+    fig.update_layout(template="plotly_dark" if dark else "plotly_white",
+                      paper_bgcolor=background, plot_bgcolor=background,
+                      font_color=text, hoverlabel=dict(bgcolor=background, font_color=text))
+    fig.update_xaxes(gridcolor=grid, zerolinecolor=grid)
+    fig.update_yaxes(gridcolor=grid, zerolinecolor=grid)
+    st.plotly_chart(fig, theme=None, width="stretch")
 
 
 def kpi(

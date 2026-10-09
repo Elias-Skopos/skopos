@@ -1,10 +1,10 @@
 # Skopos Financeiro — KPIs para livrarias
 
-Aplicativo em Python, Streamlit e SQLite para acompanhar o financeiro da livraria e analisar vendas por pedido, título, cliente e canal, com execução local e publicação no Streamlit Community Cloud.
+Aplicativo em Python, Streamlit, SQLite local e PostgreSQL externo para acompanhar o financeiro da livraria e analisar vendas por pedido, título, cliente e canal, com execução local e publicação no Streamlit Community Cloud.
 
 Endereço publicado: [skopos.streamlit.app](https://skopos.streamlit.app/).
 
-Documentação atualizada em 07/10/2026. As mudanças locais precisam ser enviadas ao GitHub para chegar à versão publicada.
+Documentação atualizada em 09/10/2026. As mudanças locais precisam ser enviadas ao GitHub para chegar à versão publicada.
 
 ## O que o painel mostra
 
@@ -24,7 +24,9 @@ Documentação atualizada em 07/10/2026. As mudanças locais precisam ser enviad
 - **Conta → Equipe:** inclusão de pessoas, convites pendentes, alteração de perfil e remoção de acesso. A gestão da equipe fica dentro de Conta em Gestão da Plataforma.
 - **Conta:** configurações de capa, atalhos e perfil da empresa, conforme as permissões.
 
-O filtro de período compartilhado aparece em um botão compacto à direita; as datas são editadas ao abrir o calendário. Há modo claro/escuro e ocultação dos valores na Home e na Visão geral. O logo da barra lateral retorna à Home na mesma guia. As imagens da marca ficam em `assets/logo_login.png` (login) e `assets/Logo_barra_lateral.png` (barra lateral).
+O filtro de período compartilhado aparece em um botão compacto à direita; as datas são editadas ao abrir o calendário. Há modo claro/escuro e ocultação dos valores na Home e na Visão geral. O logo da barra lateral retorna à Home na mesma guia. As imagens da marca ficam em `assets/logo_login.svg` (login) e `assets/logo_barra_lateral.svg` (barra lateral).
+
+Em Lançamentos, Tipo e Status atualizam categoria e vencimento antes do envio do formulário. Ao alternar um lançamento pago para pendente, selecione o vencimento no campo exibido nas ações. A busca trata o texto digitado literalmente. Na remoção de colaboradores por Conta, marque a confirmação e envie o formulário; o servidor verifica a confirmação antes de remover o acesso.
 
 O CSS tenta ocultar os controles e o selo do Streamlit Cloud para evitar sobreposição com a barra do Skopos. O resultado deve ser conferido na hospedagem após atualizações do Streamlit.
 
@@ -41,11 +43,9 @@ O banco `livraria.db` é criado automaticamente. As pastas `backup_*` são cópi
 
 ### Atalho do Windows
 
-No botão **Atalho desktop**, ao lado de Conta na barra superior, qualquer usuário pode baixar `Skopos.url`. Salve na área de trabalho ou mova o arquivo de Downloads para lá. Dois cliques abrem `https://skopos.streamlit.app/` no navegador padrão, com acesso pela internet e login Google. Esse atalho não instala o app nem inicia o servidor local.
+No botão **Atalho desktop**, ao lado de Conta na barra superior, qualquer usuário pode baixar `Skopos-Atalho.zip`. Extraia o ZIP e execute `Criar atalho.vbs`: ele cria `Skopos Online` na área de trabalho e guarda o ícone em `%LOCALAPPDATA%\Skopos`. O atalho abre `https://skopos.streamlit.app/` no navegador, com acesso pela internet e login Google. Ele não inicia o servidor local. O arquivo `Skopos.url` da raiz é uma alternativa simples para abrir o mesmo endereço.
 
-Nesta instalação, o atalho **Skopos** da área de trabalho executa `../iniciar_skopos.pyw` com `pythonw.exe`, sem abrir terminal. O iniciador abre o navegador quando o servidor responde e reutiliza um servidor já ativo na porta 8501. Fechar a guia não encerra o servidor.
-
-O atalho usa `C:\Program Files\Python313\pythonw.exe` e precisa ser ajustado em outro computador. Instale as dependências no mesmo Python usado pelo atalho. Falhas são registradas em `skopos/inicializacao.log`.
+Para executar a versão local, use `.\.venv\Scripts\python.exe -m streamlit run app.py` dentro da pasta do projeto. O iniciador `iniciar_skopos.pyw` não faz parte destes arquivos. Fechar a guia do navegador não encerra o servidor local; encerre-o no terminal que o iniciou.
 
 ## Login com Google
 
@@ -54,7 +54,7 @@ O primeiro login com uma conta Google cadastra o perfil no SQLite; acessos segui
 1. Instale as dependências com `pip install -r requirements.txt`.
 2. Copie `.streamlit/secrets.toml.example` para `.streamlit/secrets.toml`.
 3. No arquivo copiado, preencha `client_id` e `client_secret` do Google e troque `cookie_secret` por um valor aleatório longo.
-4. No arquivo local, defina `redirect_uri = "http://localhost:8501/oauth2callback"` e autorize esse endereço no cliente OAuth Google. O arquivo de exemplo usa a URL publicada; ajuste-o para execução local.
+4. No arquivo local, defina `redirect_uri = "http://localhost:8501/oauth2callback"` e autorize esse endereço no cliente OAuth Google. O exemplo usa a URL local; ajuste-o para a URL publicada ao configurar o Cloud.
 5. Reinicie o app e use o botão do provedor configurado.
 
 O arquivo `.streamlit/secrets.toml` está ignorado pelo Git e não deve ser compartilhado. Os dados são filtrados pela empresa à qual a conta Google está vinculada.
@@ -71,7 +71,7 @@ Usuários vinculados a mais de uma livraria podem alternar a empresa pelo menu C
 
 ## Publicar no Streamlit Community Cloud
 
-Envie ao GitHub os módulos Python do app, `requirements.txt`, `README.md`, `.gitignore`, `assets/` e `.streamlit/config.toml`. O arquivo `.streamlit/secrets.toml.example` contém somente exemplos e pode ser enviado.
+Envie ao GitHub os módulos Python do app, `app_chrome.css`, `requirements.txt`, `README.md`, `.gitignore`, `assets/` e `.streamlit/config.toml`. O arquivo `.streamlit/secrets.toml.example` contém somente exemplos e pode ser enviado.
 
 Não envie `.streamlit/secrets.toml`, `.env`, bancos `.db`, CSVs com dados reais, ambientes virtuais, caches, logs ou backups. Os iniciadores do Windows não são necessários na hospedagem. Se uma credencial foi publicada, substitua-a no provedor; apagar o arquivo não elimina o histórico do Git.
 
@@ -98,9 +98,9 @@ Para atualizar a publicação, envie as alterações ao GitHub na branch configu
 
 ### Persistência dos dados
 
-O app ainda usa SQLite local, inclusive no Cloud. O armazenamento local do Community Cloud **não tem persistência garantida**: empresas, acessos, lançamentos, vendas, estoque e configurações podem ser perdidos. O banco da hospedagem não sincroniza automaticamente com o banco do PC.
+O app aceita PostgreSQL externo, configurado por `[database].url` nos Secrets ou pela variável `SKOPOS_DATABASE_URL`. Sem conexão externa configurada, usa SQLite local. O armazenamento local do Community Cloud **não tem persistência garantida**. Quando a conexão externa está configurada e falha, o app interrompe a operação: não cria um banco local alternativo.
 
-Antes de operar continuamente com dados reais na nuvem, é necessário adaptar o app para um banco externo persistente. Essa migração ainda não foi implementada.
+Para ativar a persistência, crie o PostgreSQL, migre os dados que deseja conservar e configure a mesma conexão no Cloud. Consulte [POSTGRESQL.md](POSTGRESQL.md). O suporte e o migrador estão implementados, mas a conexão real depende do provisionamento do serviço. Bancos do PC e do Cloud só compartilham dados se apontarem para o mesmo PostgreSQL.
 
 Referências: [publicação](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/deploy), [Secrets](https://docs.streamlit.io/deploy/streamlit-community-cloud/manage-your-app/app-settings) e [persistência](https://docs.streamlit.io/develop/concepts/connections/connecting-to-data).
 
@@ -113,7 +113,7 @@ Referências: [publicação](https://docs.streamlit.io/deploy/streamlit-communit
 
 ## Carregar dados comerciais
 
-Abra **Vendas e estoque** e baixe os modelos CSV. A importação aceita vírgula ou ponto e vírgula como separador e grava os dados no SQLite.
+Abra **Vendas e estoque** e baixe os modelos CSV. A importação aceita vírgula ou ponto e vírgula como separador e grava os dados no banco configurado. Há modelos vazios e exemplos preenchidos para vendas e estoque; os exemplos contêm dados fictícios e devem ser substituídos antes de importar.
 
 ### CSV de vendas
 
@@ -125,9 +125,11 @@ Campos opcionais:
 
     cliente,cliente_id,canal,cidade,uf,categoria,quantidade_devolvida,desconto,impostos,frete_cobrado,frete_custo,status
 
-Datas podem usar AAAA-MM-DD ou DD/MM/AAAA; valores com vírgula decimal também são aceitos. Desconto e impostos são valores por linha. Frete cobrado e custo do frete são valores do pedido: preencha-os somente na primeira linha daquele pedido. A chave de atualização é pedido + SKU; um novo envio atualiza uma venda importada anteriormente. cliente_id é preferível ao nome para contar clientes e frequência sem confundir pessoas com nomes iguais.
+Datas devem usar AAAA-MM-DD. Números devem usar ponto decimal, sem separador de milhar, moeda, porcentagem ou notação científica: use 1234.56. Valores como 1.234,56, 1,234.56 e 49,90 são rejeitados. Cada erro de formato indica a linha do CSV (cabeçalho = linha 1), a coluna e o valor; nenhum registro é gravado enquanto houver erro. Cabeçalhos repetidos, colunas desconhecidas, campos obrigatórios vazios e linhas com número errado de campos também são rejeitados. Status permitido: Concluído, Cancelado ou Devolvido. Desconto e impostos são valores por linha. Frete cobrado e custo do frete são valores do pedido: preencha-os somente na primeira linha daquele pedido. A chave de atualização é pedido + SKU; um novo envio atualiza uma venda importada anteriormente. cliente_id é preferível ao nome para contar clientes e frequência sem confundir pessoas com nomes iguais.
 
 Cancelamentos são excluídos dos valores de venda. Devoluções reduzem unidades e faturamento. CMV é calculado pelas unidades líquidas multiplicadas pelo custo unitário recebido.
+
+Arquivos UTF-8 com BOM e Latin-1 são aceitos. Campos numéricos opcionais vazios assumem zero; textos inválidos e valores não finitos são rejeitados, tanto nas vendas quanto no estoque.
 
 ### CSV de estoque
 
@@ -146,6 +148,8 @@ Em **Gestão da Plataforma → API do Horus**, disponível para administrador, i
     password = "sua_senha"
 
 O app mostra uma prévia antes de importar os registros. Os exemplos públicos dos itens do Horus não incluem custo unitário. Para evitar calcular uma margem fictícia, a importação fica desabilitada quando esse custo não vier na resposta. Confirme com a FMZ qual consulta/campo fornece o custo dos produtos.
+
+A consulta e suas credenciais de sessão são limpas ao trocar de empresa. A prévia só pode ser importada na empresa em que foi consultada; depois da troca, faça uma nova consulta usando os parâmetros da empresa selecionada.
 
 A URL do Horus é validada antes da chamada. Em implantação pública, configure `HORUS_ALLOWED_HOSTS` no servidor com os hosts autorizados, separados por vírgula. Hosts que resolvem para endereços locais ou privados são bloqueados por padrão. Para uma instalação local que precise alcançar um Horus na rede da livraria ou em uma VPN confiável, o administrador pode definir `HORUS_ALLOW_PRIVATE_NETWORK=true` no ambiente do servidor. Isso também libera HTTP para esse ambiente privado; Basic Auth não criptografa credenciais em HTTP, portanto prefira HTTPS sempre que disponível. Não habilite essa opção em uma hospedagem pública sem uma rede privada controlada.
 
@@ -170,3 +174,27 @@ No nível gratuito, o Google pode usar as solicitações e respostas para melhor
 - **Giro de estoque:** CMV do período ÷ valor médio das posições de estoque importadas.
 
 Os lançamentos financeiros e as vendas ficam em grupos separados para evitar dupla contagem. O resultado dos lançamentos financeiros não substitui conciliação bancária ou apuração contábil.
+
+## Testes de regressão
+
+Com as dependências instaladas, execute:
+
+    .\.venv\Scripts\python.exe -m unittest discover -s tests -v
+
+Os testes usam bancos SQLite temporários, simulam a identidade e bloqueiam chamadas externas. O adaptador PostgreSQL tem testes de tradução; a validação de integração real deve ser feita ao configurar o serviço externo. Eles cobrem as telas, importação CSV, números inválidos, isolamento de empresa no Horus, busca, formulários, confirmação de remoção e vencimentos. O resumo da IA usa vencimentos para contas pendentes, assim como a tela Contas.
+
+## Histórico e remoção de importações
+
+Em **Vendas e estoque → Histórico de importações e limpeza de dados**, cada envio de CSV ou consulta importada do Horus aparece como lote. Administradores podem exportar as linhas do lote e excluí-lo após confirmar. A exclusão só alcança a empresa ativa. Gestores podem importar e consultar o histórico, mas não excluir lotes.
+
+Uma reimportação de pedido + SKU ou data de estoque + SKU transfere a linha para o lote mais recente. Excluir o lote antigo preserva essa linha; excluir o lote atual remove a linha, sem restaurar valores anteriores. A exportação do lote é uma cópia dos registros internos para consulta e backup, não o modelo CSV de importação.
+
+Dados anteriores à criação do histórico são preservados e agrupados por empresa/tipo com o nome **Dados anteriores ao histórico**. Não é possível recuperar o nome do arquivo original retroativamente. A migração não exclui dados automaticamente.
+
+Novos lançamentos gerados pelo botão de demonstração recebem uma marca e podem ser apagados em **Apagar demonstração**. Registros financeiros antigos sem essa marca devem ser revisados e removidos por ID em **Lançamentos**; o app não presume que sejam fictícios.
+
+## Celular e cores
+
+O menu lateral usa abertura automática: inicia recolhido em telas pequenas. A barra superior usa fundo opaco em ambos os temas, controles compactos no celular e mantém o botão para abrir o menu. O atalho de Windows aparece em telas de desktop. Os logos do login e da barra lateral usam os SVGs de assets.
+
+A tela de login usa classes próprias para a composição, reduzindo a dependência do seletor CSS :has. A navegação auxiliar de desktop ainda usa esse seletor. As cores foram conferidas em Chrome e Edge, em larguras de 1440, 390 e 360 px, nos modos claro e escuro. Também houve conferência em emulação Chrome Android com toque e preferência do sistema por tema claro ou escuro; os gráficos seguem o tema do Skopos. Safari, Firefox e aparelhos físicos ainda precisam de conferência. Configurações de alto contraste ou extensões que alteram cores também podem mudar a aparência.

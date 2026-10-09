@@ -41,7 +41,10 @@ def build_insight_payload(
     paid = period_transactions[period_transactions["status"] == "Pago"] if not period_transactions.empty else period_transactions
     paid_revenue = _number(paid.loc[paid["kind"] == "Receita", "amount"].sum()) if not paid.empty else 0.0
     paid_expenses = _number(paid.loc[paid["kind"] == "Despesa", "amount"].sum()) if not paid.empty else 0.0
-    pending = period_transactions[period_transactions["status"] == "Pendente"] if not period_transactions.empty else period_transactions
+    pending = transactions[transactions["status"] == "Pendente"].copy() if not transactions.empty else transactions.copy()
+    if not pending.empty:
+        due_dates = pd.to_datetime(pending["due_date"], errors="coerce")
+        pending = pending[due_dates.dt.date.between(start, end)]
     payable = _number(pending.loc[pending["kind"] == "Despesa", "amount"].sum()) if not pending.empty else 0.0
     receivable = _number(pending.loc[pending["kind"] == "Receita", "amount"].sum()) if not pending.empty else 0.0
     expense_by_category = []

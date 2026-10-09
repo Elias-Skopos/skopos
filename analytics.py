@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 import pandas as pd
+from import_contract import validate_format
 
 
 SALES_COLUMNS = [
@@ -34,7 +35,7 @@ def _as_number(series: pd.Series) -> pd.Series:
         .str.replace(".", "", regex=False)
         .str.replace(",", ".", regex=False)
     )
-    return pd.to_numeric(text, errors="coerce")
+    return pd.to_numeric(text, errors="coerce").replace([float("inf"), float("-inf")], float("nan"))
 
 
 def _parse_date(series: pd.Series) -> pd.Series:
@@ -47,15 +48,25 @@ def _parse_date(series: pd.Series) -> pd.Series:
     return parsed
 
 
-def normalize_sales_frame(frame: pd.DataFrame) -> tuple[list[dict], list[str]]:
+def _row_error(mask, message):
+    lines = [str(i + 2) for i, invalid in enumerate(mask) if invalid]
+    return f"Linha(s) {', '.join(lines[:20])}{' e outras' if len(lines) > 20 else ''}: {message}"
+
+
+def normalize_sales_frame(frame: pd.DataFrame, *, strict: bool = True) -> tuple[list[dict], list[str]]:
     """Validate rows using the documented Skopos sales CSV/API contract."""
     data = frame.copy().dropna(how="all")
-    data.columns = [str(column).strip().lower() for column in data.columns]
+    data.columns = [str(column).strip().lstrip("\ufeff").strip().lower() for column in data.columns]
     missing = [name for name in SALES_REQUIRED if name not in data.columns]
     if missing:
         return [], [f"Colunas obrigatórias ausentes: {', '.join(missing)}."]
     if data.empty:
         return [], ["O arquivo não contém linhas de venda."]
+    if strict:
+        errors = validate_format(data, SALES_COLUMNS, SALES_REQUIRED,
+            ["quantidade", "preco_unitario", "custo_unitario", *SALES_NUMERIC_DEFAULTS], "data")
+        if errors:
+            return [], errors
 
     for name in SALES_COLUMNS:
         if name not in data:
@@ -68,9 +79,9 @@ def normalize_sales_frame(frame: pd.DataFrame) -> tuple[list[dict], list[str]]:
 
     numeric_fields = ["quantidade", "quantidade_devolvida", "preco_unitario", "custo_unitario", "desconto", "impostos", "frete_cobrado", "frete_custo"]
     for name in numeric_fields:
+        if name in SALES_NUMERIC_DEFAULTS:
+            data[name] = data[name].where(_as_text(data[name]) != "", 0)
         data[name] = _as_number(data[name])
-    for name in SALES_NUMERIC_DEFAULTS:
-        data[name] = data[name].fillna(0)
 
     errors: list[str] = []
     if (data["pedido_id"] == "").any() or (data["sku"] == "").any() or (data["titulo"] == "").any():
@@ -84,36 +95,41 @@ def normalize_sales_frame(frame: pd.DataFrame) -> tuple[list[dict], list[str]]:
     if (data[numeric_fields] < 0).any().any():
         errors.append("Valores e quantidades não podem ser negativos.")
     if (data["quantidade_devolvida"] > data["quantidade"]).any():
-        errors.append("A quantidade devolvida não pode exceder a quantidade vendida.")
+        errors.append(_row_error(data["quantidade_devolvida"] > data["quantidade"], "quantidade_devolvida não pode exceder quantidade."))
     if data.duplicated(["pedido_id", "sku"]).any():
-        errors.append("Há SKU repetido no mesmo pedido. Consolide em uma única linha por pedido e SKU.")
+        errors.append(_row_error(data.duplicated(["pedido_id", "sku"], keep=False), "Há SKU repetido no mesmo pedido. Consolide em uma única linha por pedido e SKU."))
     for field in ("frete_cobrado", "frete_custo"):
         nonzero_freight = data[data[field] > 0].groupby("pedido_id").size()
         if (nonzero_freight > 1).any():
-            errors.append(f"{field} é um valor do pedido e deve aparecer em apenas uma linha por pedido.")
+            errors.append(_row_error(data["pedido_id"].isin(nonzero_freight[nonzero_freight > 1].index) & (data[field] > 0), f"{field} é um valor do pedido e deve aparecer em apenas uma linha por pedido."))
     if errors:
         return [], errors
 
     return data[SALES_COLUMNS].to_dict(orient="records"), []
 
 
-def normalize_inventory_frame(frame: pd.DataFrame) -> tuple[list[dict], list[str]]:
+def normalize_inventory_frame(frame: pd.DataFrame, *, strict: bool = True) -> tuple[list[dict], list[str]]:
     data = frame.copy().dropna(how="all")
-    data.columns = [str(column).strip().lower() for column in data.columns]
+    data.columns = [str(column).strip().lstrip("\ufeff").strip().lower() for column in data.columns]
     missing = [name for name in INVENTORY_REQUIRED if name not in data.columns]
     if missing:
         return [], [f"Colunas obrigatórias ausentes: {', '.join(missing)}."]
     if data.empty:
         return [], ["O arquivo não contém linhas de estoque."]
+    if strict:
+        errors = validate_format(data, INVENTORY_COLUMNS, INVENTORY_REQUIRED,
+            ["quantidade", "custo_unitario", "estoque_minimo"], "data_ref")
+        if errors:
+            return [], errors
     if "estoque_minimo" not in data:
         data["estoque_minimo"] = 0
     for name in ["sku", "titulo"]:
         data[name] = _as_text(data[name])
     data["data_ref"] = _parse_date(data["data_ref"]).dt.strftime("%Y-%m-%d")
     numeric_fields = ["quantidade", "custo_unitario", "estoque_minimo"]
+    data["estoque_minimo"] = data["estoque_minimo"].where(_as_text(data["estoque_minimo"]) != "", 0)
     for name in numeric_fields:
         data[name] = _as_number(data[name])
-    data["estoque_minimo"] = data["estoque_minimo"].fillna(0)
     errors: list[str] = []
     if (data["sku"] == "").any() or (data["titulo"] == "").any():
         errors.append("SKU e título não podem ficar vazios.")
@@ -124,7 +140,7 @@ def normalize_inventory_frame(frame: pd.DataFrame) -> tuple[list[dict], list[str
     if (data[numeric_fields] < 0).any().any():
         errors.append("Valores de estoque não podem ser negativos.")
     if data.duplicated(["data_ref", "sku"]).any():
-        errors.append("Há SKU repetido na mesma data de inventário.")
+        errors.append(_row_error(data.duplicated(["data_ref", "sku"], keep=False), "Há SKU repetido na mesma data de inventário."))
     if errors:
         return [], errors
     return data[INVENTORY_COLUMNS].to_dict(orient="records"), []

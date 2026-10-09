@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 import ipaddress
+import math
 import os
 import socket
 from urllib.parse import urljoin, urlparse
@@ -181,12 +182,17 @@ def _number(value: object) -> float:
         return 0.0
     if isinstance(value, str):
         value = value.strip()
+        if not value:
+            return 0.0
         if "," in value:
             value = value.replace(".", "").replace(",", ".")
     try:
-        return float(value)
-    except (TypeError, ValueError):
-        return 0.0
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise HorusAPIError("O Horus retornou um valor numérico inválido. Confira os dados da consulta.") from exc
+    if not math.isfinite(number):
+        raise HorusAPIError("O Horus retornou um valor numérico não finito. Confira os dados da consulta.")
+    return number
 
 
 def sales_preview(orders: list[dict], items: list[dict], selected_status: str) -> list[dict]:

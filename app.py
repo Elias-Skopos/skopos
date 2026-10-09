@@ -27,6 +27,11 @@ from analytics import (
 )
 from ai_insights import AIServiceError, build_insight_payload, generate_gemini_insights
 from db import (
+    configure_database,
+    database_backend,
+    list_import_batches,
+    delete_import_batch,
+    delete_demo_transactions,
     COMPANY_ROLES,
     add_transaction,
     accept_company_invitations,
@@ -52,6 +57,7 @@ from db import (
     update_company_member_role,
     upsert_budget,
 )
+from import_contract import read_csv, csv_template
 from horus_api import HorusAPIError, fetch_orders_and_items, sales_preview, test_connection
 import ui as ui_module
 
@@ -69,44 +75,11 @@ st.set_page_config(
     page_title="Skopos",
     page_icon=str(ASSETS_DIR / "logo_novo.png"),
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 # CSS global independente dos estilos de cada página e carregado antes do login.
-st.html("""
-<style>
-header[data-testid="stHeader"], header.stAppHeader {
-    display: contents !important;
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-}
-[data-testid="stToolbarActions"], .stToolbarActions,
-[data-testid="stMainMenu"], .stMainMenu,
-[data-testid="stDecoration"],
-[data-testid="stAppDeployButton"],
-[data-testid="stStatusWidget"],
-[data-testid="stCloudViewerBadge"],
-#MainMenu, footer {
-    display: none !important;
-}
-[data-testid="stToolbar"], .stAppToolbar {
-    visibility: hidden !important;
-    height: 0 !important;
-    min-height: 0 !important;
-    background: transparent !important;
-    pointer-events: none !important;
-}
-[data-testid="stExpandSidebarButton"] {
-    position: fixed !important;
-    top: .5rem !important;
-    left: .5rem !important;
-    z-index: 1002 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
-}
-</style>
-""")
+st.html(Path(__file__).with_name("app_chrome.css"))
 
 
 def configured_identity_providers() -> list[tuple[str, str]]:
@@ -135,20 +108,20 @@ def render_login_page(identity_providers: list[tuple[str, str]]) -> None:
         [data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] {
             gap: 0 !important;
         }
-        [data-testid="stMainBlockContainer"] div[data-testid="stHorizontalBlock"]:has(.login-left-marker) {
+        .st-key-login_layout [data-testid="stHorizontalBlock"] {
             min-height: 100vh; gap: 0 !important; align-items: stretch !important;
         }
-        [data-testid="stColumn"]:has(.login-left-marker) {
+        .st-key-login_left_panel {
             display: flex; align-items: center; justify-content: center;
             padding: clamp(2rem, 5.5vw, 5.5rem); background: #fff;
         }
-        [data-testid="stColumn"]:has(.login-right-marker) {
+        .st-key-login_right_panel {
             display: flex; align-items: center; justify-content: center;
             padding: clamp(2rem, 5vw, 5rem); min-height: 100vh;
             color: #fff; background: #625fe9; border-radius: 14px 0 0 14px;
         }
-        [data-testid="stColumn"]:has(.login-left-marker) > div[data-testid="stVerticalBlock"],
-        [data-testid="stColumn"]:has(.login-right-marker) > div[data-testid="stVerticalBlock"] {
+        .st-key-login_left_panel > div[data-testid="stVerticalBlock"],
+        .st-key-login_right_panel > div[data-testid="stVerticalBlock"] {
             width: min(100%, 470px); margin: auto; justify-content: center;
         }
         .login-left-marker, .login-right-marker { display: none; }
@@ -169,17 +142,17 @@ def render_login_page(identity_providers: list[tuple[str, str]]) -> None:
         .login-brand-name { font-size: 1.3rem; font-weight: 760; letter-spacing: -.04em; }
         .login-eyebrow { margin-bottom: .7rem; color: #625fe9; font-size: .76rem; font-weight: 750;
             letter-spacing: .04em; }
-        [data-testid="stColumn"]:has(.login-left-marker) h1 {
+        .st-key-login_left_panel h1 {
             margin: 0 0 .55rem; color: #171927; font-size: clamp(2.1rem, 3.3vw, 3rem);
             font-weight: 760; letter-spacing: -.045em;
         }
         .login-description { margin-bottom: 1.8rem; color: #73798b; font-size: 1rem; line-height: 1.65; }
-        [data-testid="stColumn"]:has(.login-left-marker) button[kind="primary"] {
+        .st-key-login_left_panel button[kind="primary"] {
             min-height: 3.35rem; border: 1px solid #625fe9; border-radius: .7rem;
             color: #fff; background: #625fe9; font-size: .98rem; font-weight: 700;
             box-shadow: 0 8px 22px rgba(98,95,233,.2); transition: transform .15s ease, background .15s ease;
         }
-        [data-testid="stColumn"]:has(.login-left-marker) button[kind="primary"]:hover {
+        .st-key-login_left_panel button[kind="primary"]:hover {
             border-color: #514ed5; background: #514ed5; transform: translateY(-1px);
         }
         .login-divider { display: flex; align-items: center; gap: .8rem; margin: 1.55rem 0 1rem;
@@ -190,7 +163,7 @@ def render_login_page(identity_providers: list[tuple[str, str]]) -> None:
             color: #7a5b21; background: #fff9ec; font-size: .9rem; line-height: 1.5; }
         .login-hero-eyebrow { color: rgba(255,255,255,.74); font-size: .76rem; font-weight: 750;
             letter-spacing: .14em; text-align: center; text-transform: uppercase; }
-        [data-testid="stColumn"]:has(.login-right-marker) h2 {
+        .st-key-login_right_panel h2 {
             margin: .6rem 0 .5rem; color: #fff; font-size: clamp(1.8rem, 2.6vw, 2.5rem);
             font-weight: 740; letter-spacing: -.04em; line-height: 1.2; text-align: center;
         }
@@ -199,14 +172,14 @@ def render_login_page(identity_providers: list[tuple[str, str]]) -> None:
         .login-hero-art { display: block; width: min(100%, 38rem); max-height: 25rem; margin: .2rem auto .7rem; }
         .login-hero-caption { color: rgba(255,255,255,.75); font-size: .83rem; text-align: center; }
         @media (max-width: 760px) {
-            [data-testid="stMainBlockContainer"] div[data-testid="stHorizontalBlock"]:has(.login-left-marker) {
+            .st-key-login_layout [data-testid="stHorizontalBlock"] {
                 min-height: 100vh; flex-wrap: wrap !important;
             }
-            [data-testid="stColumn"]:has(.login-left-marker) { min-height: 72vh; padding: 2rem 1.5rem; }
-            [data-testid="stColumn"]:has(.login-right-marker) {
+            .st-key-login_left_panel { min-height: 72vh; padding: 2rem 1.5rem; }
+            .st-key-login_right_panel {
                 min-height: auto; padding: 2.2rem 1.5rem; border-radius: 14px 14px 0 0;
             }
-            [data-testid="stColumn"]:has(.login-left-marker) > div[data-testid="stVerticalBlock"] { min-height: 65vh; }
+            .st-key-login_left_panel > div[data-testid="stVerticalBlock"] { min-height: 65vh; }
             .login-brand { margin-bottom: 2rem; }
             .login-hero-art { max-height: 15rem; }
         }
@@ -215,11 +188,12 @@ def render_login_page(identity_providers: list[tuple[str, str]]) -> None:
         unsafe_allow_html=True,
     )
 
-    left_panel, right_panel = st.columns([0.86, 1.14], gap=None)
-    with left_panel:
+    with st.container(key="login_layout"):
+        left_panel, right_panel = st.columns([0.86, 1.14], gap=None)
+    with left_panel.container(key="login_left_panel"):
         st.markdown('<span class="login-left-marker"></span>', unsafe_allow_html=True)
         with st.container(key="login_logo_image"):
-            st.image(str(ASSETS_DIR / "logo_login.png"), width=420)
+            st.image(str(ASSETS_DIR / "logo_login.svg"), width=420)
         st.title("Faça seu login")
         st.markdown(
             '<div class="login-description">Entre com sua conta Google para acompanhar '
@@ -248,7 +222,7 @@ def render_login_page(identity_providers: list[tuple[str, str]]) -> None:
             unsafe_allow_html=True,
         )
 
-    with right_panel:
+    with right_panel.container(key="login_right_panel"):
         st.markdown('<span class="login-right-marker"></span>', unsafe_allow_html=True)
         st.markdown('<div class="login-hero-eyebrow">Visão clara, boas decisões</div>', unsafe_allow_html=True)
         st.markdown('<h2>Sua livraria em equilíbrio.</h2>', unsafe_allow_html=True)
@@ -269,7 +243,12 @@ if not st.user.get("is_logged_in", False):
     render_login_page(configured_identity_providers())
     st.stop()
 
-init_db()
+try:
+    configure_database(st.secrets.get("database", {}).get("url", ""))
+    init_db()
+except Exception:
+    st.error("Não foi possível conectar ao banco. Confira a configuração [database] nos Secrets e a disponibilidade do serviço. Os dados não serão gravados em outro banco automaticamente.")
+    st.stop()
 identity_subject = st.user.get("sub", "")
 identity_issuer = st.user.get("iss", "")
 if not identity_subject or not identity_issuer:
@@ -340,11 +319,7 @@ def load_inventory() -> pd.DataFrame:
 
 
 def read_csv_upload(uploaded_file) -> pd.DataFrame:
-    raw = uploaded_file.getvalue()
-    try:
-        return pd.read_csv(BytesIO(raw), sep=None, engine="python", dtype=str)
-    except UnicodeDecodeError:
-        return pd.read_csv(BytesIO(raw), sep=None, engine="python", dtype=str, encoding="latin-1")
+    return read_csv(uploaded_file.getvalue())
 
 
 def render_import_errors(errors: list[str]) -> None:
@@ -364,7 +339,15 @@ def navigate_to(page: str) -> None:
     st.query_params["page"] = page
 
 
+def clear_horus_session() -> None:
+    for key in list(st.session_state):
+        if key.startswith("horus_"):
+            del st.session_state[key]
+
+
 def switch_company(company_id: int) -> None:
+    if company_id != st.session_state.get("active_company_id"):
+        clear_horus_session()
     st.session_state["active_company_id"] = company_id
 
 
@@ -377,6 +360,7 @@ def toggle_dark_mode() -> None:
 
 
 def logout_user() -> None:
+    clear_horus_session()
     for session_key in list(st.session_state.keys()):
         if session_key.startswith(("gemini_session_key_", "gemini_key_input_", "openai_session_key_", "openai_key_input_")):
             del st.session_state[session_key]
@@ -720,9 +704,10 @@ def account_settings_page() -> None:
                     remove_submitted = st.form_submit_button(
                         "Remover acesso",
                         type="secondary",
-                        disabled=not confirm_remove,
                     )
-                if remove_submitted:
+                if remove_submitted and not confirm_remove:
+                    st.error("Confirme a remoção do acesso antes de continuar.")
+                if remove_submitted and confirm_remove:
                     selected = collaborator_options[selected_key]
                     try:
                         remove_company_member(
@@ -918,14 +903,8 @@ def render_period_filter(start: date, end: date) -> tuple[date, date]:
 
 def sidebar() -> tuple[str, date, date, int]:
     with st.sidebar:
-        sidebar_logo = base64.b64encode((ASSETS_DIR / "Logo_barra_lateral.png").read_bytes()).decode("ascii")
-        st.markdown(
-            f'<a href="?page=Home" target="_self" title="Ir para a Home" aria-label="Ir para a Home" '
-            f'style="display:block;width:100%;max-width:280px;margin:0 auto 12px;">'
-            f'<img src="data:image/png;base64,{sidebar_logo}" alt="Skopos — Gestão à vista" '
-            f'style="display:block;width:100%;height:auto;object-fit:contain;"></a>',
-            unsafe_allow_html=True,
-        )
+        with st.container(key="sidebar_logo"):
+            st.image(str(ASSETS_DIR / "logo_barra_lateral.svg"), width="stretch", link="?page=Home")
         st.markdown("**Gestão Financeira de Livrarias**")
         company_options = {int(item["id"]): item["name"] for item in user_companies}
         selected_company_id = int(st.session_state.get("active_company_id", company_id))
@@ -1062,7 +1041,7 @@ def overview(df: pd.DataFrame, start: date, end: date) -> None:
                 legend_title_text="",
                 xaxis=dict(type="date", tickformat="%m/%Y", hoverformat="%m/%Y"),
             )
-            st.plotly_chart(fig, width="stretch")
+            ui_module.render_plotly(fig)
 
     with right:
         st.subheader("Despesas por categoria")
@@ -1073,7 +1052,7 @@ def overview(df: pd.DataFrame, start: date, end: date) -> None:
             cat = exp.groupby("category", as_index=False)["amount"].sum().sort_values("amount", ascending=False)
             fig = px.pie(cat, names="category", values="amount", hole=.62)
             fig.update_layout(height=350, margin=dict(l=8,r=8,t=10,b=8), showlegend=False)
-            st.plotly_chart(fig, width="stretch")
+            ui_module.render_plotly(fig)
 
     st.subheader("Próximos compromissos")
     pending = df[df["status"] == "Pendente"].copy() if not df.empty else df
@@ -1218,7 +1197,7 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
                 if hide_values:
                     st.caption("Valores do gráfico ocultos. Use o ícone de olho acima para mostrá-los.")
                 else:
-                    st.plotly_chart(fig, width="stretch")
+                    ui_module.render_plotly(fig)
         with chart_cols[1]:
             st.subheader("Canais de venda")
             if sales["channels"].empty:
@@ -1229,7 +1208,7 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
                 if hide_values:
                     st.caption("Valores do gráfico ocultos. Use o ícone de olho acima para mostrá-los.")
                 else:
-                    st.plotly_chart(fig, width="stretch")
+                    ui_module.render_plotly(fig)
 
         rank_cols = st.columns(2)
         with rank_cols[0]:
@@ -1243,7 +1222,7 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
                 if hide_values:
                     st.caption("Valores do gráfico ocultos. Use o ícone de olho acima para mostrá-los.")
                 else:
-                    st.plotly_chart(fig, width="stretch")
+                    ui_module.render_plotly(fig)
         with rank_cols[1]:
             st.subheader("Principais clientes")
             customers = sales["customer_rank"].head(10)
@@ -1255,7 +1234,7 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
                 if hide_values:
                     st.caption("Valores do gráfico ocultos. Use o ícone de olho acima para mostrá-los.")
                 else:
-                    st.plotly_chart(fig, width="stretch")
+                    ui_module.render_plotly(fig)
 
         if not sales["state_rank"].empty:
             st.subheader("Receita líquida por UF")
@@ -1316,7 +1295,7 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
                 if hide_values:
                     st.caption("Valores do gráfico ocultos. Use o ícone de olho acima para mostrá-los.")
                 else:
-                    st.plotly_chart(fig, width="stretch")
+                    ui_module.render_plotly(fig)
     with right:
         st.subheader("Despesas por categoria")
         exp = sdf[(sdf["kind"] == "Despesa") & (sdf["status"] == "Pago")]
@@ -1329,7 +1308,7 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
             if hide_values:
                 st.caption("Valores do gráfico ocultos. Use o ícone de olho acima para mostrá-los.")
             else:
-                st.plotly_chart(fig, width="stretch")
+                ui_module.render_plotly(fig)
 
     st.subheader("Próximos compromissos")
     pending_all = df[df["status"] == "Pendente"].copy() if not df.empty else df
@@ -1361,13 +1340,21 @@ def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> Non
             st.caption(f"Posições de estoque disponíveis para consulta: {len(inventory_df)}.")
         return
     st.caption("O app aceita CSV ou sincronização pela API. O formato abaixo é por item de pedido: uma linha para cada combinação de pedido e SKU.")
-    sales_template = pd.DataFrame(columns=SALES_COLUMNS).to_csv(index=False).encode("utf-8-sig")
-    inventory_template = pd.DataFrame(columns=INVENTORY_COLUMNS).to_csv(index=False).encode("utf-8-sig")
+    st.info("Padrão obrigatório: números sem separador de milhar e com ponto decimal (1234.56); datas AAAA-MM-DD. Não use R$, %, vírgula decimal ou fórmulas. CSV separado por vírgula ou ponto e vírgula; UTF-8 recomendado. Campos numéricos opcionais vazios valem zero. O arquivo inteiro é bloqueado se houver erro.")
+    sales_template = csv_template(SALES_COLUMNS)
+    inventory_template = csv_template(INVENTORY_COLUMNS)
     template_cols = st.columns(2)
     with template_cols[0]:
         st.download_button("Baixar modelo de vendas CSV", sales_template, file_name="modelo_vendas_skopos.csv", mime="text/csv", width="stretch")
     with template_cols[1]:
         st.download_button("Baixar modelo de estoque CSV", inventory_template, file_name="modelo_estoque_skopos.csv", mime="text/csv", width="stretch")
+    with st.expander("Exemplos preenchidos e instruções"):
+        st.caption("Os exemplos contêm dados fictícios. Use-os como referência e substitua todas as linhas pelos seus dados antes de importar. No Excel, confira o CSV em um editor de texto após exportar: a configuração regional pode transformar o ponto decimal em vírgula.")
+        example_sales = [{"pedido_id": "EXEMPLO-001", "data": "2026-10-01", "sku": "LIVRO-001", "titulo": "Livro de exemplo", "quantidade": "2", "preco_unitario": "49.90", "custo_unitario": "25.00", "desconto": "0", "status": "Concluído"}]
+        example_stock = [{"data_ref": "2026-10-01", "sku": "LIVRO-001", "titulo": "Livro de exemplo", "quantidade": "10", "custo_unitario": "25.00", "estoque_minimo": "3"}, {"data_ref": "2026-10-31", "sku": "LIVRO-001", "titulo": "Livro de exemplo", "quantidade": "8", "custo_unitario": "25.00", "estoque_minimo": "3"}]
+        with st.container(horizontal=True):
+            st.download_button("Exemplo de vendas", csv_template(SALES_COLUMNS, example_sales), file_name="exemplo_vendas_skopos.csv", mime="text/csv")
+            st.download_button("Exemplo de estoque", csv_template(INVENTORY_COLUMNS, example_stock), file_name="exemplo_estoque_skopos.csv", mime="text/csv")
 
     with st.expander("Importar arquivo de vendas", expanded=sales_df.empty):
         st.caption("Obrigatórias: pedido_id, data, sku, titulo, quantidade, preco_unitario e custo_unitario. cliente_id é opcional e identifica compradores com mais precisão. Desconto e impostos são valores da linha; frete cobrado e frete custo são valores do pedido e devem aparecer apenas na primeira linha daquele pedido.")
@@ -1381,11 +1368,11 @@ def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> Non
                     st.caption(f"{len(rows)} linhas prontas para importar.")
                     st.dataframe(pd.DataFrame(rows).head(8), width="stretch", hide_index=True)
                     if st.button("Importar vendas", type="primary", key="import_sales"):
-                        count = import_sales_lines(rows, company_id, identity_issuer, identity_subject)
+                        count = import_sales_lines(rows, company_id, identity_issuer, identity_subject, source=uploaded.name)
                         st.success(f"{count} linhas de venda importadas ou atualizadas.")
                         st.rerun()
             except Exception as exc:
-                st.error(f"Não consegui ler o CSV: {exc.__class__.__name__}. Confira a codificação e o separador.")
+                st.error(str(exc) if isinstance(exc, ValueError) else "Não consegui importar o CSV. Confira os dados e a conexão com o banco.")
 
     with st.expander("Importar posição de estoque"):
         st.caption("Obrigatórias: data_ref, sku, titulo, quantidade e custo_unitario. estoque_minimo é opcional. Envie ao menos duas datas para calcular o giro no período.")
@@ -1399,11 +1386,11 @@ def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> Non
                     st.caption(f"{len(rows)} posições de SKU prontas para importar.")
                     st.dataframe(pd.DataFrame(rows).head(8), width="stretch", hide_index=True)
                     if st.button("Importar estoque", type="primary", key="import_inventory"):
-                        count = import_inventory_snapshots(rows, company_id, identity_issuer, identity_subject)
+                        count = import_inventory_snapshots(rows, company_id, identity_issuer, identity_subject, source=uploaded_stock.name)
                         st.success(f"{count} posições de estoque importadas ou atualizadas.")
                         st.rerun()
             except Exception as exc:
-                st.error(f"Não consegui ler o CSV: {exc.__class__.__name__}. Confira a codificação e o separador.")
+                st.error(str(exc) if isinstance(exc, ValueError) else "Não consegui importar o CSV. Confira os dados e a conexão com o banco.")
 
     if not sales_df.empty:
         st.subheader("Vendas carregadas")
@@ -1413,6 +1400,47 @@ def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> Non
         st.dataframe(sales_table.head(100), width="stretch", hide_index=True)
     if not inventory_df.empty:
         st.caption(f"Inventários armazenados: {len(inventory_df)} linhas.")
+    render_import_history(sales_df, inventory_df)
+
+
+def render_import_history(sales_df, inventory_df):
+    with st.expander("Histórico de importações e limpeza de dados"):
+        batches = list_import_batches(company_id)
+        if batches.empty:
+            st.caption("Nenhuma importação registrada.")
+        else:
+            labels = {r["id"]: f"{r['created_at']} · {r['source']} · {'Vendas' if r['kind'] == 'sales' else 'Estoque'} · {r['current_rows']} linhas atuais" for r in batches.to_dict("records")}
+            selected = st.selectbox("Importação", list(labels), format_func=labels.get, key=f"import_batch_{company_id}")
+            batch = batches[batches["id"] == selected].iloc[0]
+            frame = sales_df if batch["kind"] == "sales" else inventory_df
+            current = frame[frame["import_id"] == selected] if not frame.empty else frame
+            st.caption(f"Linhas recebidas: {batch['row_count']}. Linhas ainda pertencentes ao lote: {len(current)}. Reimportações transferem a linha para o lote mais recente. A exclusão remove as linhas atuais do lote; não restaura valores anteriores. Dados antigos foram agrupados por tipo, pois o arquivo de origem não foi registrado.")
+            st.download_button("Exportar dados do lote antes de excluir", current.to_csv(index=False).encode("utf-8-sig"), file_name="backup_lote_skopos.csv", mime="text/csv", key=f"export_batch_{company_id}")
+            if can_manage_team:
+                confirmed = st.checkbox("Confirmo a exclusão das linhas deste lote", key=f"confirm_batch_{company_id}_{selected}")
+                if st.button("Excluir importação", key=f"delete_batch_{company_id}"):
+                    if not confirmed:
+                        st.error("Confirme a exclusão do lote antes de continuar.")
+                    else:
+                        delete_import_batch(selected, company_id, identity_issuer, identity_subject)
+                        st.rerun()
+            else:
+                st.caption("Apenas administradores podem excluir importações.")
+        if can_manage_team:
+            demo = query_df("SELECT * FROM transactions WHERE company_id=? AND is_demo=1", [company_id])
+            if not demo.empty:
+                st.caption(f"Lançamentos financeiros marcados como demonstração: {len(demo)}.")
+                confirm_demo = st.checkbox("Confirmo a remoção dos lançamentos de demonstração", key=f"confirm_demo_{company_id}")
+                if st.button("Apagar demonstração", key=f"delete_demo_{company_id}"):
+                    if confirm_demo:
+                        delete_demo_transactions(company_id, identity_issuer, identity_subject)
+                        st.rerun()
+                    else:
+                        st.error("Confirme a remoção dos dados de demonstração.")
+            st.caption("Lançamentos antigos sem identificação de demonstração podem ser removidos em Lançamentos, selecionando o ID. O app não presume que dados antigos sejam fictícios.")
+            st.caption(f"Banco em uso: {database_backend()}.")
+            if database_backend() == "SQLite local":
+                st.warning("O SQLite local não oferece persistência garantida no Streamlit Cloud. Configure o PostgreSQL externo antes de usar o app em produção na nuvem.")
 
 
 def abc_page(sales_df: pd.DataFrame, start: date, end: date) -> None:
@@ -1502,7 +1530,7 @@ def abc_page(sales_df: pd.DataFrame, start: date, end: date) -> None:
         yaxis2=dict(title="Acumulado (%)", overlaying="y", side="right", range=[0, 105]),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
     )
-    st.plotly_chart(fig, width="stretch")
+    ui_module.render_plotly(fig)
 
     st.subheader("Classificação detalhada")
     result = table[["position", "identifier", "name", value_column, "share_pct", "cumulative_pct", "class"]].copy()
@@ -1525,6 +1553,9 @@ def abc_page(sales_df: pd.DataFrame, start: date, end: date) -> None:
 
 
 def api_configuration_page() -> None:
+    if st.session_state.get("horus_session_company_id") != company_id:
+        clear_horus_session()
+        st.session_state["horus_session_company_id"] = company_id
     page_header("Integrações", "Conexão com o Horus", "Consulte pedidos e itens do Horus S.I.G.A. para alimentar as análises comerciais do Skopos.")
     st.markdown(
         "A conexão usa **Basic Auth** e os endpoints de leitura `Busca_PedidosVenda` e "
@@ -1622,6 +1653,7 @@ def api_configuration_page() -> None:
                 selected_status = "FAT"
                 st.session_state.pop("horus_sales_preview", None)
                 st.session_state.pop("horus_query_summary", None)
+                st.session_state.pop("horus_preview_company_id", None)
                 with st.spinner("Consultando pedidos e itens no Horus…"):
                     orders, items = fetch_orders_and_items(
                         url_base,
@@ -1636,10 +1668,15 @@ def api_configuration_page() -> None:
                     rows = sales_preview(orders, items, selected_status)
                 st.session_state["horus_sales_preview"] = rows
                 st.session_state["horus_query_summary"] = (len(orders), len(items))
+                st.session_state["horus_preview_company_id"] = company_id
             except HorusAPIError as exc:
                 st.error(str(exc))
 
     preview_rows = st.session_state.get("horus_sales_preview")
+    if st.session_state.get("horus_preview_company_id") != company_id:
+        preview_rows = None
+        st.session_state.pop("horus_sales_preview", None)
+        st.session_state.pop("horus_query_summary", None)
     if preview_rows:
         order_count, item_count = st.session_state.get("horus_query_summary", (0, len(preview_rows)))
         st.divider()
@@ -1660,11 +1697,11 @@ def api_configuration_page() -> None:
                 width="content",
             )
         else:
-            normalized_rows, validation_errors = normalize_sales_frame(preview_frame.drop(columns=["valor_liquido_horus"], errors="ignore"))
+            normalized_rows, validation_errors = normalize_sales_frame(preview_frame.drop(columns=["valor_liquido_horus"], errors="ignore"), strict=False)
             if validation_errors:
                 render_import_errors(validation_errors)
             elif st.button("Importar vendas no Skopos", type="primary", key="horus_import_sales"):
-                imported = import_sales_lines(normalized_rows, company_id, identity_issuer, identity_subject)
+                imported = import_sales_lines(normalized_rows, company_id, identity_issuer, identity_subject, source="API do Horus")
                 st.session_state["horus_sales_preview"] = None
                 st.success(f"Importação concluída: {imported} linhas de venda.")
     elif preview_rows is not None:
@@ -1823,11 +1860,11 @@ def transactions_page(df: pd.DataFrame) -> None:
     page_header("Operação", "Lançamentos", "Registre entradas e saídas com o mínimo de fricção e mantenha o histórico auditável.")
     if can_edit:
         with st.expander("＋ Novo lançamento", expanded=df.empty):
+            kind_col, status_col = st.columns(2)
+            kind = kind_col.selectbox("Tipo", ["Receita", "Despesa"], key=f"new_transaction_kind_{company_id}")
+            status = status_col.selectbox("Status", ["Pago", "Pendente"], key=f"new_transaction_status_{company_id}")
             with st.form("new_transaction", clear_on_submit=True):
-                c1, c2, c3 = st.columns([1,1,1])
-                kind = c1.selectbox("Tipo", ["Receita", "Despesa"])
-                dt = c2.date_input("Data", value=date.today(), format="DD/MM/YYYY")
-                status = c3.selectbox("Status", ["Pago", "Pendente"])
+                dt = st.date_input("Data", value=date.today(), format="DD/MM/YYYY")
                 categories = REVENUE_CATEGORIES if kind == "Receita" else EXPENSE_CATEGORIES
                 category = st.selectbox("Categoria", categories)
                 description = st.text_input("Descrição", placeholder="Ex.: compra de 40 exemplares da Editora Horizonte")
@@ -1864,7 +1901,7 @@ def transactions_page(df: pd.DataFrame) -> None:
     status_f = c3.multiselect("Status", ["Pago", "Pendente"], default=["Pago", "Pendente"])
     filtered = df[df["kind"].isin(kind_f) & df["status"].isin(status_f)].copy()
     if search:
-        mask = filtered["description"].str.contains(search, case=False, na=False) | filtered["category"].str.contains(search, case=False, na=False)
+        mask = filtered["description"].str.contains(search, case=False, na=False, regex=False) | filtered["category"].str.contains(search, case=False, na=False, regex=False)
         filtered = filtered[mask]
     view = filtered.copy()
     view["Data"] = view["date"].dt.strftime("%d/%m/%Y")
@@ -1880,10 +1917,20 @@ def transactions_page(df: pd.DataFrame) -> None:
             ids = filtered["id"].tolist()
             if ids:
                 selected = st.selectbox("ID do lançamento", ids, format_func=lambda x: f"#{x} · {filtered.loc[filtered['id']==x, 'description'].iloc[0]}")
+                current_row = filtered.loc[filtered["id"] == selected].iloc[0]
+                pending_due = None
+                if current_row["status"] == "Pago":
+                    previous_due = current_row["due_date"]
+                    pending_due = st.date_input(
+                        "Vencimento ao marcar como pendente",
+                        value=previous_due.date() if pd.notna(previous_due) else date.today(),
+                        format="DD/MM/YYYY",
+                        key=f"pending_due_{company_id}_{selected}",
+                    )
                 c1, c2 = st.columns(2)
                 if c1.button("Alternar status", width="stretch"):
-                    current = filtered.loc[filtered["id"] == selected, "status"].iloc[0]
-                    update_status(selected, "Pendente" if current == "Pago" else "Pago", company_id, identity_issuer, identity_subject)
+                    update_status(selected, "Pendente" if current_row["status"] == "Pago" else "Pago", company_id, identity_issuer, identity_subject,
+                                  due_date=pending_due.isoformat() if pending_due is not None else None)
                     st.rerun()
                 if c2.button("Excluir", type="secondary", width="stretch"):
                     delete_transaction(selected, company_id, identity_issuer, identity_subject)
@@ -1909,12 +1956,13 @@ def accounts_page(df: pd.DataFrame, start: date, end: date) -> None:
     with c[1]: kpi("A pagar", money(payable), "Despesas pendentes")
     with c[2]: kpi("Vencido", money(overdue), "Itens com prazo ultrapassado")
     st.write("")
+    pending = pending.sort_values("due_date")
     pending["Vencimento"] = pending["due_date"].dt.strftime("%d/%m/%Y").fillna("—")
     pending["Situação"] = pending["days"].apply(lambda d: "Vencido" if pd.notna(d) and d < 0 else ("Hoje" if d == 0 else "A vencer"))
     pending["Valor"] = pending["amount"].map(money)
     pending["Descrição"] = pending["description"]
     pending["Tipo"] = pending["kind"]
-    st.dataframe(pending[["Vencimento","Situação","Tipo","Descrição","Valor"]].sort_values("Vencimento"), width="stretch", hide_index=True)
+    st.dataframe(pending[["Vencimento","Situação","Tipo","Descrição","Valor"]], width="stretch", hide_index=True)
 
 
 def cashflow_page(df: pd.DataFrame, start: date, end: date) -> None:
@@ -1941,7 +1989,7 @@ def cashflow_page(df: pd.DataFrame, start: date, end: date) -> None:
         xaxis=dict(type="date", title="Data", tickformat="%d/%m/%Y", hoverformat="%d/%m/%Y"),
         yaxis_title="Saldo projetado",
     )
-    st.plotly_chart(fig, width="stretch")
+    ui_module.render_plotly(fig)
     low = daily.loc[daily["saldo_acumulado"].idxmin()]
     st.caption(f"Menor saldo projetado: {money(low['saldo_acumulado'])} em {low['cash_date']:%d/%m/%Y}.")
 
@@ -1989,13 +2037,13 @@ def reports_page(df: pd.DataFrame, start: date, end: date) -> None:
         cat = sdf.groupby(["category", "kind"], as_index=False)["amount"].sum().sort_values("amount", ascending=False)
         fig = px.bar(cat, x="amount", y="category", color="kind", orientation="h", labels={"amount":"Valor","category":"Categoria","kind":"Tipo"})
         fig.update_layout(height=430, margin=dict(l=8,r=8,t=10,b=8), legend_title_text="")
-        st.plotly_chart(fig, width="stretch")
+        ui_module.render_plotly(fig)
     with c2:
         st.subheader("Meios de pagamento")
         pay = sdf.groupby("payment_method", as_index=False)["amount"].sum().sort_values("amount", ascending=False)
         fig = px.bar(pay, x="payment_method", y="amount", labels={"payment_method":"Meio","amount":"Valor"})
         fig.update_layout(height=430, margin=dict(l=8,r=8,t=10,b=8))
-        st.plotly_chart(fig, width="stretch")
+        ui_module.render_plotly(fig)
     export = sdf.copy()
     export["date"] = export["date"].dt.strftime("%Y-%m-%d")
     export["due_date"] = export["due_date"].dt.strftime("%Y-%m-%d")

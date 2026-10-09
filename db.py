@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
+import os
+from uuid import uuid4
 from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
 from typing import Iterable
 
@@ -10,24 +13,47 @@ import pandas as pd
 DB_PATH = Path(__file__).with_name("livraria.db")
 COMPANY_ROLES = ("administrator", "manager", "collaborator")
 EDIT_ROLES = ("administrator", "manager")
+DATABASE_URL = os.environ.get("SKOPOS_DATABASE_URL", "")
+
+
+def configure_database(url: str | None = None) -> None:
+    global DATABASE_URL
+    DATABASE_URL = url or os.environ.get("SKOPOS_DATABASE_URL", "")
+    if DATABASE_URL and not DATABASE_URL.startswith(("postgresql://", "postgres://")):
+        raise ValueError("O banco externo deve usar uma URL PostgreSQL.")
+
+
+def database_backend() -> str:
+    return "PostgreSQL" if DATABASE_URL else "SQLite local"
 
 
 @contextmanager
 def connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    if DATABASE_URL:
+        from postgres_backend import Connection
+        conn = Connection(DATABASE_URL)
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
     try:
         yield conn
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
 
 def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    if getattr(conn, "is_postgres", False):
+        return {row[0] for row in conn.execute("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=?", (table,))}
     return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
 
 
 def _migrate_membership_roles(conn: sqlite3.Connection) -> None:
+    if getattr(conn, "is_postgres", False):
+        return
     row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='company_memberships'").fetchone()
     if not row or "'owner'" not in (row[0] or ""):
         return
@@ -65,6 +91,8 @@ def _add_company_column(conn: sqlite3.Connection, table: str) -> None:
 
 def _rebuild_tenant_table(conn: sqlite3.Connection, table: str, create_sql: str, columns: str) -> None:
     """Replace global unique keys with company-scoped unique keys, preserving rows."""
+    if getattr(conn, "is_postgres", False):
+        return
     if "company_id" not in _columns(conn, table):
         _add_company_column(conn, table)
     has_global_unique = False
@@ -88,6 +116,8 @@ def _rebuild_tenant_table(conn: sqlite3.Connection, table: str, create_sql: str,
 
 def init_db() -> None:
     with connection() as conn:
+        if getattr(conn, "is_postgres", False):
+            conn.execute("SELECT pg_advisory_xact_lock(736567001)")
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS companies (
@@ -194,6 +224,19 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sales_lines_sku ON sales_lines(sku)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_inventory_snapshot_date ON inventory_snapshots(snapshot_date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_transactions_company_date ON transactions(company_id, date)")
+        conn.execute("""CREATE TABLE IF NOT EXISTS import_batches (
+            id TEXT PRIMARY KEY, company_id INTEGER NOT NULL,
+            kind TEXT NOT NULL CHECK(kind IN ('sales','inventory')), source TEXT NOT NULL,
+            row_count INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+        for table, kind in (("sales_lines", "sales"), ("inventory_snapshots", "inventory")):
+            if "import_id" not in _columns(conn, table):
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN import_id TEXT")
+            # Historical rows are preserved, with an explicit legacy batch per company.
+            for row in conn.execute(f"SELECT company_id, COUNT(*) AS n FROM {table} WHERE import_id IS NULL AND company_id IS NOT NULL GROUP BY company_id").fetchall():
+                batch = _create_import_batch(conn, row["company_id"], kind, "Dados anteriores ao histórico", row["n"])
+                conn.execute(f"UPDATE {table} SET import_id=? WHERE company_id=? AND import_id IS NULL", (batch, row["company_id"]))
+        if "is_demo" not in _columns(conn, "transactions"):
+            conn.execute("ALTER TABLE transactions ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0")
 
 
 def register_identity(issuer: str, subject: str, email: str = "", name: str = "", email_verified: bool = False) -> None:
@@ -386,23 +429,41 @@ def update_company(company_id: int, name: str, issuer: str, subject: str) -> boo
 
 def query_df(sql: str, params: Iterable | None = None) -> pd.DataFrame:
     with connection() as conn:
-        return pd.read_sql_query(sql, conn, params=tuple(params or ()))
+        cursor = conn.execute(sql, tuple(params or ()))
+        return pd.DataFrame([dict(row) for row in cursor.fetchall()], columns=[column[0] for column in cursor.description])
 
 
 def add_transaction(data: dict, company_id: int, issuer: str, subject: str) -> None:
     with connection() as conn:
         _require_role(conn, company_id, issuer, subject, EDIT_ROLES)
+        due = _validate_due_date(data.get("due_date")) if data["status"] == "Pendente" else None
         conn.execute("""INSERT INTO transactions
             (company_id, date, kind, category, description, amount, payment_method, status, due_date, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (company_id, data["date"], data["kind"], data["category"], data["description"], data["amount"],
-             data["payment_method"], data["status"], data.get("due_date"), data.get("notes")))
+             data["payment_method"], data["status"], due, data.get("notes")))
 
 
-def update_status(transaction_id: int, status: str, company_id: int, issuer: str, subject: str) -> None:
+def _validate_due_date(value: str | None) -> str:
+    try:
+        return date.fromisoformat(value or "").isoformat()
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Informe uma data de vencimento válida para o lançamento pendente.") from exc
+
+
+def update_status(
+    transaction_id: int, status: str, company_id: int, issuer: str, subject: str,
+    due_date: str | None = None,
+) -> None:
     with connection() as conn:
         _require_role(conn, company_id, issuer, subject, EDIT_ROLES)
-        conn.execute("UPDATE transactions SET status=? WHERE id=? AND company_id=?", (status, transaction_id, company_id))
+        if status not in {"Pago", "Pendente"}:
+            raise ValueError("Selecione um status válido.")
+        row = conn.execute("SELECT due_date FROM transactions WHERE id=? AND company_id=?", (transaction_id, company_id)).fetchone()
+        if row is None:
+            return
+        selected_due = _validate_due_date(due_date or row["due_date"]) if status == "Pendente" else row["due_date"]
+        conn.execute("UPDATE transactions SET status=?, due_date=? WHERE id=? AND company_id=?", (status, selected_due, transaction_id, company_id))
 
 
 def delete_transaction(transaction_id: int, company_id: int, issuer: str, subject: str) -> None:
@@ -419,39 +480,71 @@ def upsert_budget(month: str, category: str, amount: float, company_id: int, iss
             (company_id, month, category, amount))
 
 
-def import_sales_lines(rows: list[dict], company_id: int, issuer: str, subject: str) -> int:
+def import_sales_lines(rows: list[dict], company_id: int, issuer: str, subject: str, source: str = "CSV de vendas") -> int:
     if not rows:
         return 0
     with connection() as conn:
         _require_role(conn, company_id, issuer, subject, EDIT_ROLES)
+        batch = _create_import_batch(conn, company_id, "sales", source, len(rows))
         conn.executemany("""INSERT INTO sales_lines
             (company_id, order_id, sale_date, customer, customer_id, channel, city, state, sku, title, category,
-             quantity, returned_quantity, unit_price, unit_cost, discount, taxes, shipping_charged, shipping_cost, status, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+             quantity, returned_quantity, unit_price, unit_cost, discount, taxes, shipping_charged, shipping_cost, status, import_id, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(company_id, order_id, sku) DO UPDATE SET sale_date=excluded.sale_date, customer=excluded.customer,
             customer_id=excluded.customer_id, channel=excluded.channel, city=excluded.city, state=excluded.state,
             title=excluded.title, category=excluded.category, quantity=excluded.quantity, returned_quantity=excluded.returned_quantity,
             unit_price=excluded.unit_price, unit_cost=excluded.unit_cost, discount=excluded.discount, taxes=excluded.taxes,
             shipping_charged=excluded.shipping_charged, shipping_cost=excluded.shipping_cost, status=excluded.status,
-            updated_at=CURRENT_TIMESTAMP""",
+            import_id=excluded.import_id, updated_at=CURRENT_TIMESTAMP""",
             [(company_id, r["pedido_id"], r["data"], r["cliente"], r["cliente_id"], r["canal"], r["cidade"], r["uf"],
               r["sku"], r["titulo"], r["categoria"], r["quantidade"], r["quantidade_devolvida"], r["preco_unitario"],
-              r["custo_unitario"], r["desconto"], r["impostos"], r["frete_cobrado"], r["frete_custo"], r["status"]) for r in rows])
+              r["custo_unitario"], r["desconto"], r["impostos"], r["frete_cobrado"], r["frete_custo"], r["status"], batch) for r in rows])
     return len(rows)
 
 
-def import_inventory_snapshots(rows: list[dict], company_id: int, issuer: str, subject: str) -> int:
+def import_inventory_snapshots(rows: list[dict], company_id: int, issuer: str, subject: str, source: str = "CSV de estoque") -> int:
     if not rows:
         return 0
     with connection() as conn:
         _require_role(conn, company_id, issuer, subject, EDIT_ROLES)
+        batch = _create_import_batch(conn, company_id, "inventory", source, len(rows))
         conn.executemany("""INSERT INTO inventory_snapshots
-            (company_id, snapshot_date, sku, title, quantity, unit_cost, minimum_quantity, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            (company_id, snapshot_date, sku, title, quantity, unit_cost, minimum_quantity, import_id, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(company_id, snapshot_date, sku) DO UPDATE SET title=excluded.title, quantity=excluded.quantity,
-            unit_cost=excluded.unit_cost, minimum_quantity=excluded.minimum_quantity, updated_at=CURRENT_TIMESTAMP""",
-            [(company_id, r["data_ref"], r["sku"], r["titulo"], r["quantidade"], r["custo_unitario"], r["estoque_minimo"]) for r in rows])
+            unit_cost=excluded.unit_cost, minimum_quantity=excluded.minimum_quantity, import_id=excluded.import_id, updated_at=CURRENT_TIMESTAMP""",
+            [(company_id, r["data_ref"], r["sku"], r["titulo"], r["quantidade"], r["custo_unitario"], r["estoque_minimo"], batch) for r in rows])
     return len(rows)
+
+
+def _create_import_batch(conn, company_id, kind, source, count):
+    batch = uuid4().hex
+    conn.execute("INSERT INTO import_batches(id,company_id,kind,source,row_count) VALUES (?,?,?,?,?)",
+                 (batch, company_id, kind, str(source)[:240], int(count)))
+    return batch
+
+
+def list_import_batches(company_id: int) -> pd.DataFrame:
+    return query_df("""SELECT b.*,
+        (SELECT COUNT(*) FROM sales_lines s WHERE s.company_id=b.company_id AND s.import_id=b.id)
+        + (SELECT COUNT(*) FROM inventory_snapshots i WHERE i.company_id=b.company_id AND i.import_id=b.id) AS current_rows
+        FROM import_batches b WHERE b.company_id=? ORDER BY b.created_at DESC, b.id""", [company_id])
+
+
+def delete_import_batch(batch_id: str, company_id: int, issuer: str, subject: str) -> int:
+    with connection() as conn:
+        _require_role(conn, company_id, issuer, subject, ("administrator",))
+        count = 0
+        for table in ("sales_lines", "inventory_snapshots"):
+            count += conn.execute(f"DELETE FROM {table} WHERE company_id=? AND import_id=?", (company_id, batch_id)).rowcount
+        conn.execute("DELETE FROM import_batches WHERE company_id=? AND id=?", (company_id, batch_id))
+        return count
+
+
+def delete_demo_transactions(company_id: int, issuer: str, subject: str) -> int:
+    with connection() as conn:
+        _require_role(conn, company_id, issuer, subject, ("administrator",))
+        return conn.execute("DELETE FROM transactions WHERE company_id=? AND is_demo=1", (company_id,)).rowcount
 
 
 def get_app_setting(key: str, company_id: int, default: str = "") -> str:
@@ -488,5 +581,5 @@ def seed_demo(company_id: int, issuer: str, subject: str) -> None:
     with connection() as conn:
         _require_role(conn, company_id, issuer, subject, EDIT_ROLES)
         conn.executemany("""INSERT INTO transactions
-            (company_id, date, kind, category, description, amount, payment_method, status, due_date, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", [(company_id, *row) for row in demo])
+            (company_id, date, kind, category, description, amount, payment_method, status, due_date, notes, is_demo)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""", [(company_id, *row) for row in demo])
