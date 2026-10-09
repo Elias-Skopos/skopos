@@ -905,7 +905,6 @@ def sidebar() -> tuple[str, date, date, int]:
     with st.sidebar:
         with st.container(key="sidebar_logo"):
             st.image(str(ASSETS_DIR / "logo_barra_lateral.svg"), width="stretch", link="?page=Home")
-        st.markdown("**Gestão Financeira de Livrarias**")
         company_options = {int(item["id"]): item["name"] for item in user_companies}
         selected_company_id = int(st.session_state.get("active_company_id", company_id))
         if selected_company_id not in company_options:
@@ -1757,7 +1756,7 @@ def team_page(show_header: bool = True) -> None:
     with st.container(border=True):
         st.subheader("Adicionar pessoa")
         with st.form(f"invite_company_member_{company_id}"):
-            invite_email = st.text_input("E-mail da conta Google", placeholder="pessoa@livraria.com.br")
+            invite_email = st.text_input("E-mail da conta Google", placeholder="pessoa@gmail.com")
             invite_role = st.selectbox(
                 "Perfil",
                 COMPANY_ROLES,
