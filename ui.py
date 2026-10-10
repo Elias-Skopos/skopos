@@ -5,7 +5,7 @@ import streamlit as st
 
 
 def inject_css(dark_mode: bool = False) -> None:
-    st.markdown(
+    st.html(
         """
         <style>
         :root {
@@ -34,7 +34,13 @@ def inject_css(dark_mode: bool = False) -> None:
             visibility: visible !important;
             pointer-events: auto !important;
         }
-        .block-container { max-width: 1440px; padding-top: 5.5rem; padding-bottom: 3rem; }
+        .block-container { max-width: 1440px; padding-top: 4.5rem; padding-bottom: 3rem; }
+        /* Barras fixas não devem deixar linhas vazias antes do conteúdo. */
+        [data-testid="stLayoutWrapper"]:has(> .st-key-app_topbar),
+        [data-testid="stLayoutWrapper"]:has(> .st-key-collapsed_nav_rail),
+        [data-testid="stLayoutWrapper"]:has(> .st-key-collapsed_nav_rail_expanded) {
+            position: absolute; width: 0; height: 0;
+        }
         .st-key-app_topbar {
             position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
             box-sizing: border-box; width: 100%;
@@ -150,6 +156,19 @@ def inject_css(dark_mode: bool = False) -> None:
         }
         .sidebar-brand { font-size: 1.75rem; font-weight: 700; line-height: 1.15; margin: 0 0 1rem; }
         .sidebar-brand span { display: inline-block; margin: .2rem 0 0; font-size: .72rem; font-weight: 400; font-style: italic; color: var(--muted); }
+        [data-testid="stSidebar"] .st-key-sidebar_logo_home button {
+            width: 100%; height: auto; min-height: 0; padding: 0 !important;
+            background: transparent !important; border: 0 !important;
+            border-radius: 0; box-shadow: none;
+        }
+        .st-key-sidebar_logo_home button > div,
+        .st-key-sidebar_logo_home [data-testid="stMarkdownContainer"],
+        .st-key-sidebar_logo_home button p {
+            width: 100%; margin: 0;
+        }
+        .st-key-sidebar_logo_home button img {
+            display: block; width: 100%; height: auto !important; max-height: none !important;
+        }
         [data-testid="stSidebar"] [data-testid^="stBaseButton-"] {
             box-sizing: border-box; width: 100%; justify-content: flex-start; text-align: left;
             padding: .62rem .8rem; border-radius: 9px; font-weight: 550;
@@ -256,7 +275,7 @@ def inject_css(dark_mode: bool = False) -> None:
         @media (max-width: 700px) {
             .st-key-app_topbar { left: 0; padding: .35rem .5rem .35rem 3.3rem; gap: .35rem; }
             .st-key-app_topbar > div { min-width: 0; }
-            .block-container { padding: 4.5rem 1rem 2rem; }
+            .block-container { padding: 4.25rem 1rem 2rem; }
             .st-key-app_topbar button { min-height: 44px; padding: .4rem .5rem; }
             .st-key-top_home_button button p,
             .st-key-toggle_overview_values button p,
@@ -283,10 +302,9 @@ def inject_css(dark_mode: bool = False) -> None:
         }
         </style>
         """,
-        unsafe_allow_html=True,
     )
     if dark_mode:
-        st.markdown(
+        st.html(
             """
             <style>
             :root {
@@ -391,7 +409,6 @@ def inject_css(dark_mode: bool = False) -> None:
             .st-key-sidebar_logo img { filter: brightness(0) invert(1); }
             </style>
             """,
-            unsafe_allow_html=True,
         )
 
 

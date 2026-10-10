@@ -904,7 +904,15 @@ def render_period_filter(start: date, end: date) -> tuple[date, date]:
 def sidebar() -> tuple[str, date, date, int]:
     with st.sidebar:
         with st.container(key="sidebar_logo"):
-            st.image(str(ASSETS_DIR / "logo_barra_lateral.svg"), width="stretch", link="?page=Home")
+            logo_data = base64.b64encode((ASSETS_DIR / "logo_barra_lateral.svg").read_bytes()).decode("ascii")
+            st.button(
+                f"![Skopos](data:image/svg+xml;base64,{logo_data})",
+                key="sidebar_logo_home",
+                help="Voltar para a página inicial",
+                on_click=navigate_to,
+                args=("Home",),
+                width="stretch",
+            )
         company_options = {int(item["id"]): item["name"] for item in user_companies}
         selected_company_id = int(st.session_state.get("active_company_id", company_id))
         if selected_company_id not in company_options:
