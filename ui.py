@@ -9,6 +9,7 @@ def inject_css(dark_mode: bool = False) -> None:
         """
         <style>
         :root {
+          color-scheme: only light;
           --surface: #ffffff;
           --app-bg: #f8f8ff;
           --surface-2: #f2f3ff;
@@ -27,34 +28,7 @@ def inject_css(dark_mode: bool = False) -> None:
         }
         [data-testid="stSidebar"] { background: #f5f5ff; color: var(--text); }
         h1, h2, h3, h4, label, [data-testid="stWidgetLabel"] { color: var(--text); }
-        /* Remove os controles da hospedagem que cobrem a barra do Skopos. */
-        [data-testid="stHeader"], .stAppHeader {
-            display: contents !important;
-            background: transparent !important;
-            height: 0 !important;
-            min-height: 0 !important;
-            padding: 0 !important;
-            border: 0 !important;
-            box-shadow: none !important;
-        }
-        [data-testid="stToolbarActions"], .stToolbarActions,
-        [data-testid="stMainMenu"], .stMainMenu,
-        [data-testid="stDecoration"],
-        [data-testid="stAppDeployButton"],
-        [data-testid="stStatusWidget"],
-        [data-testid="stCloudViewerBadge"],
-        .viewerBadge_container__r5tak,
-        .viewerBadge_link__qRIco,
-        #MainMenu, footer {
-            display: none !important;
-        }
-        [data-testid="stToolbar"], .stAppToolbar {
-            visibility: hidden !important;
-            height: 0 !important;
-            min-height: 0 !important;
-            background: transparent !important;
-            pointer-events: none !important;
-        }
+        /* Controles da hospedagem são tratados apenas em app_chrome.css. */
         [data-testid="stExpandSidebarButton"],
         [data-testid="stSidebarCollapseButton"] {
             visibility: visible !important;
@@ -104,15 +78,6 @@ def inject_css(dark_mode: bool = False) -> None:
         .st-key-toggle_dark_mode_topbar_dark button::after { left: .18rem; }
         [data-testid="stSidebar"] { border-right: 1px solid var(--border); }
         [data-testid="stSidebar"] > div:first-child { padding-top: .75rem; }
-        [data-testid="stSidebarCollapseButton"] svg,
-        [data-testid="stExpandSidebarButton"] svg { display: none !important; }
-        [data-testid="stSidebarCollapseButton"] button::after,
-        [data-testid="stExpandSidebarButton"]::after {
-            content: ""; display: block; flex: 0 0 18px; width: 18px; height: 18px;
-            box-sizing: border-box; border: 1.7px solid currentColor; border-radius: 3px;
-            background: linear-gradient(to right, currentColor 0 1.5px, transparent 1.5px);
-            background-size: 5px 100%; background-position: 4px 0; background-repeat: no-repeat;
-        }
         [data-testid="stTooltipHoverTarget"] {
             background: transparent !important; border: 0 !important;
             outline: 0 !important; box-shadow: none !important;
@@ -260,6 +225,18 @@ def inject_css(dark_mode: bool = False) -> None:
         div[data-testid="stMetric"] { background:white; border:1px solid var(--border); padding:14px; border-radius:14px; }
         div[data-testid="stDataFrame"] { border:1px solid var(--border); border-radius:14px; overflow:hidden; }
         .stButton > button, .stDownloadButton > button { border-radius: 10px; font-weight: 650; }
+        [data-testid^="stBaseButton-"], [data-testid="stPopoverButton"] {
+            background: var(--surface) !important;
+            color: var(--text) !important;
+            border-color: var(--border) !important;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        [data-testid^="stBaseButton-"] p, [data-testid^="stBaseButton-"] span,
+        [data-testid="stPopoverButton"] p, [data-testid="stPopoverButton"] span {
+            color: inherit !important;
+            -webkit-text-fill-color: currentColor;
+        }
         .stApp { --primary-color: #625fe9; }
         .stButton > button:hover, .stDownloadButton > button:hover,
         [data-testid="stPopoverButton"]:hover {
@@ -313,6 +290,7 @@ def inject_css(dark_mode: bool = False) -> None:
             """
             <style>
             :root {
+              color-scheme: only dark;
               --surface: #1b2432;
               --app-bg: #111722;
               --surface-2: #242e3e;
