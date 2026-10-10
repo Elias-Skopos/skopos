@@ -596,9 +596,9 @@ def home_shortcuts_settings() -> None:
             available,
             default=saved_shortcuts,
             format_func=lambda target: target,
-            help="Os atalhos aparecem na Home de todas as pessoas com acesso a esta livraria.",
+            help="Os Favoritos aparecem na Home de todas as pessoas com acesso a esta livraria.",
         )
-        save = st.form_submit_button("Salvar atalhos", type="primary")
+        save = st.form_submit_button("Salvar Favoritos", type="primary")
     if save:
         if not selected:
             st.error("Selecione pelo menos uma tela para manter um atalho na Home.")
@@ -609,7 +609,7 @@ def home_shortcuts_settings() -> None:
                 identity_issuer,
                 identity_subject,
             )
-            st.success("Atalhos da Home atualizados.")
+            st.success("Favoritos da Home atualizados.")
 
 
 def home_page(df: pd.DataFrame, start: date, end: date) -> None:
@@ -626,7 +626,7 @@ def home_page(df: pd.DataFrame, start: date, end: date) -> None:
         shortcuts = ["Visão geral", "Vendas e estoque", "Lançamentos", "Contas"]
     shortcuts = [target for target in shortcuts if target in accessible_shortcuts(membership_role)]
     if shortcuts:
-        st.subheader("Atalhos")
+        st.subheader("Favoritos")
         with st.container(horizontal=True, wrap=True, gap="small"):
             for index, target in enumerate(shortcuts):
                 st.button(
@@ -668,7 +668,7 @@ def account_settings_page() -> None:
 
     if can_edit:
         render_company_cover_settings(company_id)
-        with st.expander("Atalhos da Home"):
+        with st.expander("Favoritos da Home"):
             st.caption("Escolha os acessos rápidos exibidos na tela inicial desta livraria.")
             home_shortcuts_settings()
     if can_manage_team:
@@ -1003,7 +1003,6 @@ def sidebar() -> tuple[str, date, date, int]:
         st.session_state.setdefault("global_period", default_period())
         start, end = normalize_period(st.session_state["global_period"])
         st.divider()
-        st.caption("Dica: use os filtros para reduzir ruído e focar em decisões financeiras.")
     return page, start, end, selected_company_id
 
 
