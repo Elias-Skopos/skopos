@@ -3,6 +3,8 @@ import re
 
 import streamlit as st
 
+CHART_COLORS = ["#625fe9", "#9b7be8", "#4d8df5", "#36a3c7", "#177245", "#e4a11b", "#8b93a1"]
+
 
 def inject_css(dark_mode: bool = False) -> None:
     st.html(
@@ -17,7 +19,7 @@ def inject_css(dark_mode: bool = False) -> None:
           --text: #17191f;
           --muted: #68707f;
           --positive: #177245;
-          --negative: #b3261e;
+          --negative: #625fe9;
           --accent: #625fe9;
           --nav-group-bg: #eef0fb;
           --nav-group-text: #343b50;
@@ -316,6 +318,9 @@ def inject_css(dark_mode: bool = False) -> None:
               --text: #edf1f7;
               --muted: #a8b2c1;
               --accent: #8b87ff;
+              --negative: #bcb9ff;
+              --skopos-error-bg: #292b52;
+              --skopos-error-text: #d7d5ff;
               --nav-group-bg: #242e3e;
               --nav-group-text: #edf1f7;
               --nav-group-border: #46536a;
@@ -422,6 +427,7 @@ def render_plotly(fig) -> None:
     text = "#edf1f7" if dark else "#17191f"
     grid = "#354154" if dark else "#e4e5f5"
     fig.update_layout(template="plotly_dark" if dark else "plotly_white",
+                      colorway=CHART_COLORS,
                       paper_bgcolor=background, plot_bgcolor=background,
                       font_color=text, hoverlabel=dict(bgcolor=background, font_color=text))
     fig.update_xaxes(gridcolor=grid, zerolinecolor=grid)

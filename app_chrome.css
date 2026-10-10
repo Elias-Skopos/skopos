@@ -1,4 +1,38 @@
 /* Controles da hospedagem: carregado antes do login e em toda execução. */
+:root {
+    --skopos-primary: #625fe9;
+    --skopos-error-bg: #efeeff;
+    --skopos-error-text: #514ed5;
+}
+/* A identidade visual também vale antes do cadastro da primeira empresa. */
+button[kind="primary"], button[kind="primaryFormSubmit"],
+[data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"],
+[data-baseweb="tag"], [data-testid="stMultiSelect"] [data-tag] {
+    background: var(--skopos-primary) !important;
+    border-color: var(--skopos-primary) !important;
+    color: #ffffff !important;
+}
+button[kind="primary"] *, button[kind="primaryFormSubmit"] *,
+[data-baseweb="tag"] *, [data-testid="stMultiSelect"] [data-tag] * {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor;
+}
+[data-baseweb="tag"] svg, [data-testid="stMultiSelect"] [data-tag] svg { fill: currentColor; }
+[data-baseweb="input"]:focus-within,
+[data-baseweb="textarea"]:focus-within,
+[data-baseweb="select"]:focus-within > div {
+    border-color: var(--skopos-primary) !important;
+}
+[data-testid="stAlertContentError"] {
+    background: var(--skopos-error-bg) !important;
+    color: var(--skopos-error-text) !important;
+    border-color: var(--skopos-primary) !important;
+}
+[data-testid="stAlertContentError"] * {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor;
+}
+
 header[data-testid="stHeader"], header.stAppHeader {
     /* O botão de reabrir pertence a este header. Não ocultar seu ancestral. */
     display: block !important;

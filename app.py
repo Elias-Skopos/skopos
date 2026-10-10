@@ -62,6 +62,7 @@ from horus_api import HorusAPIError, fetch_orders_and_items, sales_preview, test
 import ui as ui_module
 
 ui_module = importlib.reload(ui_module)
+px.defaults.color_discrete_sequence = ui_module.CHART_COLORS
 inject_css, kpi, money, page_header = (
     ui_module.inject_css,
     ui_module.kpi,
