@@ -1,5 +1,5 @@
 /* Controles da hospedagem: carregado antes do login e em toda execução. */
-/* header[data-testid="stHeader"], header.stAppHeader {
+header[data-testid="stHeader"], header.stAppHeader {
     display: contents !important;
     background: transparent !important;
     border: 0 !important;
@@ -21,39 +21,5 @@
     left: .5rem !important;
     z-index: 1002 !important;
     visibility: visible !important;
-    pointer-events: auto !important;
-}*/
-
-
-
-/* Cabeçalho do Streamlit */
-header[data-testid="stHeader"],
-header.stAppHeader {
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-}
-
-/* Ocultar controles desnecessários da hospedagem */
-[data-testid="stToolbar"],
-.stAppToolbar,
-[data-testid="stToolbarActions"],
-.stToolbarActions,
-[data-testid="stMainMenu"],
-.stMainMenu,
-[data-testid="stDecoration"],
-[data-testid="stAppDeployButton"],
-[data-testid="stStatusWidget"],
-[data-testid="stCloudViewerBadge"],
-#MainMenu,
-footer {
-    display: none !important;
-}
-
-/* Preservar os controles de abertura da barra lateral */
-[data-testid="stExpandSidebarButton"],
-[data-testid="stSidebarCollapsedControl"] {
-    visibility: visible !important;
-    opacity: 1 !important;
     pointer-events: auto !important;
 }
