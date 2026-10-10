@@ -23,3 +23,7 @@ header[data-testid="stHeader"], header.stAppHeader {
     visibility: visible !important;
     pointer-events: auto !important;
 }
+/* Reduzir espaço entre o cabeçalho e o conteúdo da página */
+[data-testid="stMainBlockContainer"] {
+    padding-top: 1.5rem !important;
+}
