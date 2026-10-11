@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import os
+import re
 from uuid import uuid4
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -371,32 +372,56 @@ def pending_company_invitations(company_id: int) -> list[dict]:
 
 
 def invite_company_member(company_id: int, email: str, role: str, issuer: str, subject: str) -> str:
-    clean_email = email.strip().casefold()
-    if role not in COMPANY_ROLES:
-        raise ValueError("Selecione um perfil válido.")
-    if len(clean_email) > 254 or "@" not in clean_email or "." not in clean_email.rsplit("@", 1)[-1]:
-        raise ValueError("Informe um e-mail válido.")
+    return invite_company_members(company_id, [(email, role)], issuer, subject)[0][2]
+
+
+def invite_company_members(company_id: int, invitations: list[tuple[str, str]], issuer: str,
+                           subject: str) -> list[tuple[str, str, str]]:
+    """Validate the entire batch before registering any invitation, in one transaction."""
+    if not invitations:
+        raise ValueError("Informe pelo menos um e-mail para adicionar à empresa.")
+    recipients = []
+    seen = set()
+    for email, role in invitations:
+        clean_email = email.strip().casefold()
+        if role not in COMPANY_ROLES:
+            raise ValueError("Selecione um perfil válido.")
+        if len(clean_email) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", clean_email):
+            raise ValueError(f"Confira o e-mail da pessoa {len(recipients) + 1}: {email or '(vazio)'}.")
+        if clean_email in seen:
+            raise ValueError(f"O e-mail {clean_email} está repetido. Mantenha apenas uma linha para essa pessoa.")
+        recipients.append((clean_email, role))
+        seen.add(clean_email)
+    results = []
     with connection() as conn:
         _require_role(conn, company_id, issuer, subject, ("administrator",))
-        existing_user = conn.execute(
-            "SELECT issuer, subject FROM users WHERE lower(email)=? AND email_verified=1 ORDER BY created_at LIMIT 1",
-            (clean_email,),
+        for clean_email, role in recipients:
+            result = _register_company_invitation(conn, company_id, clean_email, role, issuer, subject)
+            results.append((clean_email, role, result))
+    return results
+
+
+def _register_company_invitation(conn, company_id: int, clean_email: str, role: str,
+                                 issuer: str, subject: str) -> str:
+    existing_user = conn.execute(
+        "SELECT issuer, subject FROM users WHERE lower(email)=? AND email_verified=1 ORDER BY created_at LIMIT 1",
+        (clean_email,),
+    ).fetchone()
+    if existing_user:
+        membership = conn.execute(
+            "SELECT 1 FROM company_memberships WHERE company_id=? AND issuer=? AND subject=?",
+            (company_id, existing_user["issuer"], existing_user["subject"]),
         ).fetchone()
-        if existing_user:
-            membership = conn.execute(
-                "SELECT 1 FROM company_memberships WHERE company_id=? AND issuer=? AND subject=?",
-                (company_id, existing_user["issuer"], existing_user["subject"]),
-            ).fetchone()
-            if membership:
-                return "already_member"
-        conn.execute("""INSERT INTO company_invitations
-                (company_id, email, role, invited_by_issuer, invited_by_subject, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(company_id, email) DO UPDATE SET role=excluded.role,
-                invited_by_issuer=excluded.invited_by_issuer, invited_by_subject=excluded.invited_by_subject,
-                created_at=CURRENT_TIMESTAMP, status='pending', expires_at=excluded.expires_at""",
-            (company_id, clean_email, role, issuer, subject,
-             (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()))
+        if membership:
+            return "already_member"
+    conn.execute("""INSERT INTO company_invitations
+            (company_id, email, role, invited_by_issuer, invited_by_subject, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(company_id, email) DO UPDATE SET role=excluded.role,
+            invited_by_issuer=excluded.invited_by_issuer, invited_by_subject=excluded.invited_by_subject,
+            created_at=CURRENT_TIMESTAMP, status='pending', expires_at=excluded.expires_at""",
+        (company_id, clean_email, role, issuer, subject,
+         (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()))
     return "invited"
 
 

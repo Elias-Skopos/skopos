@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import calendar
 import importlib
 import json
 from datetime import date
@@ -38,7 +37,6 @@ from db import (
     get_user_setting,
     set_user_settings,
     add_transaction,
-    demo_company,
     companies_for_user,
     company_members,
     create_company,
@@ -62,7 +60,7 @@ from import_contract import read_csv, csv_template
 from horus_api import HorusAPIError, fetch_orders_and_items, sales_preview, test_connection
 import ui as ui_module
 from account_ui import (
-    ROLE_LABELS, activate_company, clear_company_session, invite_person,
+    ROLE_LABELS, activate_company, clear_company_session, company_invitation_form,
     open_workspace_picker, personal_profile, workspace_picker,
 )
 
@@ -224,7 +222,7 @@ def render_login_page(identity_providers: list[tuple[str, str]]) -> None:
         st.markdown('<div class="login-divider">acesso seguro</div>', unsafe_allow_html=True)
         st.markdown(
             '<div class="login-footnote">No primeiro acesso, entre com o Google e escolha '
-            'uma empresa, crie a sua ou experimente o Demo.</div>',
+            'uma empresa ou crie a sua.</div>',
             unsafe_allow_html=True,
         )
 
@@ -276,16 +274,14 @@ st.session_state["session_identity"] = (identity_issuer, identity_subject)
 st.session_state.setdefault("dark_mode", get_user_setting("dark_mode", identity_issuer, identity_subject) == "true")
 inject_css(dark_mode=st.session_state["dark_mode"])
 user_companies = companies_for_user(identity_issuer, identity_subject)
-if st.session_state.get("demo_active", False):
-    user_companies.append(demo_company())
+st.session_state.pop("demo_active", None)
 selected_id = st.session_state.get("active_company_id")
 company_ids = {int(item["id"]) for item in user_companies}
 if selected_id is not None and selected_id not in company_ids:
     clear_company_session()
     st.session_state.pop("active_company_id", None)
 if st.session_state.get("workspace_picker") or selected_id not in company_ids:
-    workspace_picker(user_companies if not st.session_state.get("demo_active") else [item for item in user_companies if not item["is_demo"]],
-                     identity_issuer, identity_subject, st.logout)
+    workspace_picker(user_companies, identity_issuer, identity_subject, st.logout)
     st.stop()
 active_company = next(item for item in user_companies if int(item["id"]) == selected_id)
 company_id = int(active_company["id"])
@@ -353,7 +349,7 @@ def clear_horus_session() -> None:
 
 def switch_company(company_id: int) -> None:
     company = next(item for item in user_companies if int(item["id"]) == company_id)
-    activate_company(company_id, bool(company["is_demo"]), home=False)
+    activate_company(company_id, home=False)
 
 
 def toggle_financial_values() -> None:
@@ -443,11 +439,11 @@ def account_menu() -> None:
                     st.caption(account_email)
                 st.caption(f"Empresa ativa: {company_name}")
                 st.caption(f"Perfil: {ROLE_LABELS.get(membership_role, 'Colaborador')}")
-                st.button("Meu perfil", icon=PAGE_ICONS["Meu perfil"], key="account_profile",
-                          on_click=navigate_to, args=("Meu perfil",), width="stretch")
                 if can_manage_team:
                     st.button("Gerenciar empresa", icon=PAGE_ICONS["Empresa"], key="account_company",
                               on_click=navigate_to, args=("Empresa",), width="stretch")
+                st.button("Meu perfil", icon=PAGE_ICONS["Meu perfil"], key="account_profile",
+                          on_click=navigate_to, args=("Meu perfil",), width="stretch")
                 st.button("Empresas e convites", icon=":material/domain:", key="account_workspaces",
                           on_click=open_workspace_picker, width="stretch")
                 if len(user_companies) > 1:
@@ -523,7 +519,7 @@ def collapsed_nav_rail(role: str) -> None:
             "Visão geral", "Curva ABC", "Relatórios", "Fluxo de caixa", "Contas", "Insights com IA",
         ],
         "Alimentar e planejar": ["Vendas e estoque", "Lançamentos", "Orçamento"],
-        "Gestão da Plataforma": (["Empresa", "API do Horus", "Configuração de IA"] if role == "administrator" else []) + ["Meu perfil"],
+        "Gestão da Plataforma": (["API do Horus", "Configuração de IA", "Empresa"] if role == "administrator" else []) + ["Meu perfil"],
     }
     groups = {group: destinations for group, destinations in groups.items() if destinations}
     group_icons = {
@@ -713,8 +709,6 @@ def scope_df(df: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
 
 def default_period() -> tuple[date, date]:
     today = date.today()
-    if active_company["is_demo"]:
-        return today.replace(day=1), today.replace(day=calendar.monthrange(today.year, today.month)[1])
     return today.replace(day=1), today
 
 
@@ -903,13 +897,14 @@ def sidebar() -> tuple[str, date, date, int]:
             ("Lançamentos", "Lançamentos"),
             ("Orçamento", "Orçamento"),
         ]
-        platform_pages = [("Meu perfil", "Meu perfil")]
+        platform_pages = []
         if selected_membership["role"] == "administrator":
             platform_pages.extend([
                 ("API do Horus", "API do Horus"),
                 ("Configuração de IA", "Configuração de IA"),
                 ("Empresa", "Empresa"),
             ])
+        platform_pages.append(("Meu perfil", "Meu perfil"))
         old_page = st.query_params.get("page") or st.session_state.get("page_navigation", "Home")
         old_page_map = {"Configuração de API": "API do Horus", "Conta": "Meu perfil"}
         st.session_state.setdefault("active_page", old_page_map.get(old_page, old_page))
@@ -1732,24 +1727,8 @@ def team_page(show_header: bool = True) -> None:
     st.dataframe(member_table, width="stretch", hide_index=True)
 
     with st.container(border=True):
-        st.subheader("Convidar pessoa")
-        with st.form(f"invite_company_member_{company_id}"):
-            invite_email = st.text_input("E-mail da conta Google", placeholder="pessoa@gmail.com")
-            invite_role = st.selectbox(
-                "Perfil",
-                ("collaborator", "administrator"),
-                format_func=lambda value: ROLE_LABELS[value],
-            )
-            invite_submitted = st.form_submit_button("Registrar convite", type="primary")
-        if invite_submitted:
-            try:
-                st.session_state[notice_key] = invite_person(
-                    company_id, company_name, invite_email, invite_role, identity_issuer, identity_subject
-                )
-                st.session_state["account_team_expanded"] = True
-                st.rerun()
-            except (ValueError, PermissionError) as exc:
-                st.error(str(exc))
+        st.subheader("Adicionar pessoas à empresa")
+        company_invitation_form(company_id, company_name, identity_issuer, identity_subject)
 
     if members:
         member_options = {
@@ -2151,8 +2130,6 @@ can_edit = membership_role == "administrator"
 can_manage_team = membership_role == "administrator"
 collapsed_nav_rail(membership_role)
 account_menu()
-if active_company["is_demo"]:
-    st.info("Demonstração com dados fictícios. Este ambiente permite somente consulta.")
 df = load_transactions()
 sales_df = load_sales()
 inventory_df = load_inventory()

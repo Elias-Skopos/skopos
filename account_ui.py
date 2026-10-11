@@ -7,7 +7,7 @@ from streamlit.errors import StreamlitSecretNotFoundError
 import db
 from invitation_email import send_invitation
 
-ROLE_LABELS = {"administrator": "Proprietário", "collaborator": "Colaborador", "demo": "Demonstração"}
+ROLE_LABELS = {"administrator": "Proprietário", "collaborator": "Colaborador"}
 
 
 def clear_company_session() -> None:
@@ -17,10 +17,10 @@ def clear_company_session() -> None:
     st.session_state.pop("collapsed_rail_open_group", None)
 
 
-def activate_company(company_id: int, is_demo: bool = False, home: bool = True) -> None:
+def activate_company(company_id: int, home: bool = True) -> None:
     clear_company_session()
     st.session_state["active_company_id"] = company_id
-    st.session_state["demo_active"] = is_demo
+    st.session_state.pop("demo_active", None)
     st.session_state["workspace_picker"] = False
     if home:
         st.session_state["active_page"] = "Home"
@@ -36,26 +36,82 @@ def open_workspace_picker() -> None:
     st.query_params["page"] = "Home"
 
 
-def invite_person(company_id: int, company_name: str, email: str, role: str, issuer: str, subject: str) -> tuple[str, str]:
-    result = db.invite_company_member(company_id, email, role, issuer, subject)
-    if result == "already_member":
-        return "info", "Essa pessoa já participa da empresa. Você pode editar o perfil na equipe."
+def invite_people(company_id: int, company_name: str, invitations: list[tuple[str, str]],
+                  issuer: str, subject: str) -> tuple[str, str]:
+    results = db.invite_company_members(company_id, invitations, issuer, subject)
     try:
         config = dict(st.secrets.get("email", {}))
     except StreamlitSecretNotFoundError:
         config = {}
-    try:
-        sent = send_invitation(email.strip().casefold(), company_name, ROLE_LABELS[role], config)
-    except (OSError, smtplib.SMTPException, ValueError):
-        return "warning", "Convite registrado, mas o e-mail não foi enviado. A pessoa pode aceitar ao entrar no Skopos com esse e-mail."
-    if sent:
-        return "success", "Convite registrado e enviado por e-mail. A pessoa deverá aceitá-lo para receber acesso."
-    return "info", "Convite registrado. Compartilhe o endereço do Skopos com a pessoa; ao entrar com esse e-mail, ela poderá aceitar. O envio por e-mail ainda não está configurado."
+    registered = []
+    existing = []
+    failed = []
+    unconfigured = []
+    for email, role, result in results:
+        if result == "already_member":
+            existing.append(email)
+            continue
+        registered.append(email)
+        try:
+            if not send_invitation(email, company_name, ROLE_LABELS[role], config):
+                unconfigured.append(email)
+        except (OSError, smtplib.SMTPException, ValueError):
+            failed.append(email)
+    messages = []
+    if registered:
+        messages.append(f"Convites registrados: {', '.join(registered)}. Ao entrar com a conta Google correspondente, cada pessoa poderá aceitar o convite e acessar a empresa.")
+    if existing:
+        messages.append(f"Já participam da empresa: {', '.join(existing)}. Para alterar o perfil, use a gestão da equipe.")
+    if failed:
+        messages.append(f"Não foi possível enviar o e-mail para: {', '.join(failed)}. Os convites estão disponíveis no Skopos; compartilhe o endereço do aplicativo.")
+    if unconfigured:
+        messages.append("O envio por e-mail ainda não está configurado. Compartilhe o endereço do Skopos com as pessoas convidadas.")
+    if registered and not failed and not unconfigured:
+        messages.append("Os convites também foram enviados por e-mail.")
+    level = "warning" if failed else "info" if unconfigured or not registered else "success"
+    return level, " ".join(messages)
+
+
+def company_invitation_form(company_id: int, company_name: str, issuer: str, subject: str) -> None:
+    prefix = f"team_invite_{company_id}"
+    count_key = f"{prefix}_count"
+    if st.session_state.pop(f"{prefix}_reset", False):
+        for key in list(st.session_state):
+            if key.startswith((f"{prefix}_email_", f"{prefix}_role_")):
+                del st.session_state[key]
+        st.session_state[count_key] = 1
+    count = st.session_state.setdefault(count_key, 1)
+    with st.form(f"invite_company_members_{company_id}", enter_to_submit=False):
+        invitations = []
+        for index in range(count):
+            with st.container(horizontal=True, vertical_alignment="bottom"):
+                email = st.text_input(f"E-mail {index + 1}", placeholder="pessoa@gmail.com",
+                                      key=f"{prefix}_email_{index}", max_chars=254)
+                role = st.selectbox(f"Perfil {index + 1}", ("collaborator", "administrator"),
+                                     format_func=ROLE_LABELS.get, key=f"{prefix}_role_{index}")
+            if email.strip():
+                invitations.append((email, role))
+        add_row = st.form_submit_button("+", help="Adicionar outro e-mail", key=f"{prefix}_add_row")
+        st.caption("Escolha o perfil de cada pessoa. O botão + apenas adiciona outro campo; os convites são registrados ao clicar abaixo.")
+        submitted = st.form_submit_button("Adicionar à empresa", type="primary", key=f"{prefix}_submit")
+    if add_row:
+        st.session_state[count_key] = count + 1
+        st.session_state["account_team_expanded"] = True
+        st.rerun()
+    if submitted:
+        try:
+            st.session_state[f"team_invite_notice_{company_id}"] = invite_people(
+                company_id, company_name, invitations, issuer, subject)
+            st.session_state[f"{prefix}_reset"] = True
+            st.session_state["account_team_expanded"] = True
+            st.rerun()
+        except (ValueError, PermissionError) as exc:
+            st.error(str(exc))
 
 
 def workspace_picker(companies: list[dict], issuer: str, subject: str, logout) -> None:
     st.title("Bem-vindo ao Skopos")
-    st.write("Escolha uma empresa, crie a sua ou explore a demonstração.")
+    st.write("Escolha uma empresa ou crie a sua.")
     st.caption(f"Conectado como {st.user.get('email', '')}")
     notice = st.session_state.pop("workspace_notice", None)
     if notice:
@@ -87,49 +143,32 @@ def workspace_picker(companies: list[dict], issuer: str, subject: str, logout) -
     with st.container(border=True):
         st.subheader("Minhas empresas")
         if not companies:
-            st.caption("Você ainda não participa de uma empresa. Pode criar a sua ou usar o Demo abaixo.")
+            st.caption("Você ainda não participa de uma empresa. Crie a sua para começar.")
         for company in companies:
             st.button(f"Entrar em {company['name']} · {ROLE_LABELS[company['role']]}",
                       key=f"enter_company_{company['id']}", icon=":material/store:", width="stretch",
                       on_click=activate_company, args=(int(company["id"]),))
 
     with st.expander("Criar uma empresa", expanded=not companies and not invitations, icon=":material/add_business:"):
-        st.caption("Você será o proprietário desta empresa, com acesso completo. Os convites são opcionais.")
+        st.caption("Você será o proprietário desta empresa, com acesso completo. Após criar, poderá convidar sua equipe.")
         with st.form("company_onboarding"):
             name = st.text_input("Nome da empresa", key="onboarding_name", max_chars=120)
             segment = st.selectbox("Tipo de empresa", db.COMPANY_SEGMENTS, key="onboarding_segment")
             city = st.text_input("Cidade (opcional)", key="onboarding_city", max_chars=120)
             contact = st.text_input("E-mail de contato da empresa (opcional)", key="onboarding_contact", max_chars=254)
-            st.markdown("**Convidar uma pessoa (opcional)**")
-            email = st.text_input("E-mail da pessoa", key="onboarding_invite", max_chars=254)
-            role = st.selectbox("Perfil da pessoa convidada", ("collaborator", "administrator"), format_func=ROLE_LABELS.get)
-            st.caption("Colaborador consulta os dados. Proprietário também pode alterar dados e gerenciar acessos.")
             create = st.form_submit_button("Criar empresa", type="primary")
         if create:
             try:
-                if email.strip() and ("@" not in email or "." not in email.rsplit("@", 1)[-1]):
-                    raise ValueError("Confira o e-mail da pessoa convidada.")
                 cid = db.create_company(name, issuer, subject, segment, contact, city)
-                if email.strip():
-                    st.session_state[f"team_invite_notice_{cid}"] = invite_person(cid, name.strip(), email, role, issuer, subject)
-                    activate_company(cid)
-                    st.session_state["active_page"] = "Empresa"
-                    st.query_params["page"] = "Empresa"
-                    st.session_state["account_team_expanded"] = True
-                else:
-                    activate_company(cid)
+                activate_company(cid)
+                st.session_state["active_page"] = "Empresa"
+                st.query_params["page"] = "Empresa"
+                st.session_state["account_team_expanded"] = True
+                st.session_state[f"team_invite_notice_{cid}"] = ("success", "Empresa criada. Adicione os e-mails da sua equipe abaixo ou comece a usar o aplicativo pelo menu.")
                 st.rerun()
             except (ValueError, PermissionError) as exc:
                 st.error(str(exc))
 
-    with st.container(border=True):
-        st.subheader("Experimentar o Demo")
-        st.write("Conheça os indicadores com vendas, estoque, despesas e orçamento de uma livraria fictícia.")
-        st.caption("Somente consulta. Os dados de demonstração ficam separados das suas empresas.")
-        if st.button("Acessar Demo", key="enter_demo", icon=":material/play_circle:"):
-            company = db.demo_company()
-            activate_company(int(company["id"]), True)
-            st.rerun()
     st.button("Sair da conta", on_click=logout, key="workspace_logout", icon=":material/logout:")
 
 
@@ -166,7 +205,7 @@ def personal_profile(company: dict, issuer: str, subject: str, logout, shortcuts
                     try:
                         db.leave_company(int(company["id"]), issuer, subject)
                         st.session_state.pop("active_company_id", None)
-                        st.session_state["demo_active"] = False
+                        st.session_state.pop("demo_active", None)
                         open_workspace_picker()
                         st.session_state["workspace_notice"] = "Você saiu da empresa. Seus dados de login foram preservados."
                         st.rerun()
