@@ -45,11 +45,11 @@ O banco `livraria.db` é criado automaticamente. As pastas `backup_*` são cópi
 
 No botão **Atalho desktop**, ao lado de Conta na barra superior, qualquer usuário pode baixar `Skopos-Atalho.zip`. Extraia o ZIP e execute `Criar atalho.vbs`: ele cria `Skopos Online` na área de trabalho e guarda o ícone em `%LOCALAPPDATA%\Skopos`. O atalho abre `https://skopos.streamlit.app/` no navegador, com acesso pela internet e login Google. Ele não inicia o servidor local. O arquivo `Skopos.url` da raiz é uma alternativa simples para abrir o mesmo endereço.
 
-Para executar a versão local, use `.\.venv\Scripts\python.exe -m streamlit run app.py` dentro da pasta do projeto. O iniciador `iniciar_skopos.pyw` não faz parte destes arquivos. Fechar a guia do navegador não encerra o servidor local; encerre-o no terminal que o iniciou.
+Para executar a versão local com PostgreSQL, use **Iniciar Skopos local.cmd**: ele inicia o banco, faz um backup e abre o aplicativo. As instruções de manutenção estão em [POSTGRESQL_LOCAL.md](POSTGRESQL_LOCAL.md). Sem PostgreSQL configurado, também é possível executar `.\.venv\Scripts\python.exe -m streamlit run app.py` com SQLite. Fechar a guia do navegador não encerra o servidor local; encerre-o no terminal que o iniciou.
 
 ## Login com Google
 
-O primeiro login com uma conta Google cadastra o perfil no SQLite; acessos seguintes atualizam o último acesso. O Google autentica a conta e confirma sua identidade; o app não recebe nem armazena a senha. Para ativar o login:
+O primeiro login com uma conta Google cadastra o perfil no banco configurado; acessos seguintes atualizam o último acesso. O Google autentica a conta e confirma sua identidade; o app não recebe nem armazena a senha. Para ativar o login:
 
 1. Instale as dependências com `pip install -r requirements.txt`.
 2. Copie `.streamlit/secrets.toml.example` para `.streamlit/secrets.toml`.
@@ -61,13 +61,20 @@ O arquivo `.streamlit/secrets.toml` está ignorado pelo Git e não deve ser comp
 
 | Perfil | Permissões principais |
 | --- | --- |
-| Administrador/suporte | Opera os dados, gerencia equipe e perfil da empresa e configura Horus e IA. |
-| Gestor | Opera lançamentos, orçamento e importações e consulta os painéis. Não acessa a configuração de Horus e IA nem a gestão completa da equipe. |
-| Colaborador | Consulta dados, sem editar. |
+| Proprietário | Opera os dados, gerencia equipe e perfil da empresa e configura Horus e IA. |
+| Colaborador | Consulta dados, gerencia suas preferências e pode sair da empresa, sem editar dados da empresa. |
 
-Em **Conta → Equipe**, o administrador adiciona pessoas pelo e-mail da conta Google. O app **não envia e-mails automaticamente**: registra o convite, que concede acesso quando a pessoa entra com esse e-mail verificado pelo Google. Se a conta já tiver entrado no Skopos, a inclusão é imediata. A confirmação de **Adicionar ou convidar** permanece após a atualização automática, até clicar em **Fechar mensagem**.
+Após o login, a tela de entrada apresenta empresas vinculadas, convites pendentes, criação de empresa e Demo. Quem cria uma empresa recebe o perfil Proprietário, mesmo se já for colaborador de outra. O segmento, nome, cidade e e-mail de contato são configurados no cadastro e em **Empresa → Perfil da empresa**. Empresas existentes recebem o segmento Livraria durante a atualização.
 
-Usuários vinculados a mais de uma livraria podem alternar a empresa pelo menu Conta da barra superior. Os perfis valem dentro da empresa e não concedem acesso global às outras livrarias.
+O menu **Conta** oferece **Empresa** (somente proprietários), **Meu perfil** e **Empresas e convites**. A gestão da equipe, capa e integrações pertence à empresa. Nome de exibição, tema e favoritos são pessoais; favoritos antigos da empresa servem como padrão até a pessoa salvar sua escolha.
+
+Em **Empresa → Equipe e convites**, o proprietário registra convites pelo e-mail da conta Google. Nenhum acesso é concedido automaticamente, mesmo a usuários já cadastrados: a pessoa deve aceitar ou recusar após login com e-mail verificado. Convites valem por sete dias, podem ser cancelados e podem ser registrados novamente. A empresa precisa manter pelo menos um proprietário; sair da empresa preserva seus dados e a identidade do usuário.
+
+O envio de e-mail é opcional: configure `[email]` conforme `.streamlit/secrets.toml.example` com SMTP autenticado e TLS (587/STARTTLS ou 465/TLS) e o endereço da aplicação. Sem configuração, o convite fica disponível na entrada; compartilhe o endereço com o convidado. Falha no envio não apaga o convite nem concede acesso.
+
+O **Demo** contém vendas, estoque, lançamentos e orçamento fictícios do mês atual, em empresa isolada e somente para consulta. Não carrega dados nas empresas reais nem usa credenciais compartilhadas. Na atualização de um SQLite existente, é criado um backup em `backup_account_upgrade/` antes de alterar a estrutura. Administradores existentes permanecem proprietários (código interno `administrator`); gestores antigos passam a colaboradores. Revise esses vínculos na gestão da equipe se precisar conceder propriedade.
+
+Usuários vinculados a mais de uma empresa podem alternar pelo menu Conta da barra superior. Os perfis valem dentro de cada empresa e não concedem acesso global.
 
 ## Publicar no Streamlit Community Cloud
 
@@ -191,7 +198,7 @@ Uma reimportação de pedido + SKU ou data de estoque + SKU transfere a linha pa
 
 Dados anteriores à criação do histórico são preservados e agrupados por empresa/tipo com o nome **Dados anteriores ao histórico**. Não é possível recuperar o nome do arquivo original retroativamente. A migração não exclui dados automaticamente.
 
-Novos lançamentos gerados pelo botão de demonstração recebem uma marca e podem ser apagados em **Apagar demonstração**. Registros financeiros antigos sem essa marca devem ser revisados e removidos por ID em **Lançamentos**; o app não presume que sejam fictícios.
+O acesso Demo da entrada usa uma empresa separada. Dados antigos gerados pelo antigo botão de demonstração permanecem identificados e podem ser apagados em **Apagar demonstração**. Registros financeiros antigos sem essa marca devem ser revisados e removidos por ID em **Lançamentos**; o app não presume que sejam fictícios.
 
 ## Celular e cores
 

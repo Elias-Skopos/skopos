@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import calendar
 import importlib
 import json
 from datetime import date
@@ -33,24 +34,24 @@ from db import (
     delete_import_batch,
     delete_demo_transactions,
     COMPANY_ROLES,
+    COMPANY_SEGMENTS,
+    get_user_setting,
+    set_user_settings,
     add_transaction,
-    accept_company_invitations,
+    demo_company,
     companies_for_user,
     company_members,
     create_company,
     delete_company_invitation,
     delete_transaction,
     get_app_setting,
-    has_pending_company_invitation,
     import_inventory_snapshots,
     import_sales_lines,
-    invite_company_member,
     init_db,
     pending_company_invitations,
     query_df,
     remove_company_member,
     register_identity,
-    seed_demo,
     set_app_settings,
     update_status,
     update_company,
@@ -60,6 +61,10 @@ from db import (
 from import_contract import read_csv, csv_template
 from horus_api import HorusAPIError, fetch_orders_and_items, sales_preview, test_connection
 import ui as ui_module
+from account_ui import (
+    ROLE_LABELS, activate_company, clear_company_session, invite_person,
+    open_workspace_picker, personal_profile, workspace_picker,
+)
 
 ui_module = importlib.reload(ui_module)
 px.defaults.color_discrete_sequence = ui_module.CHART_COLORS
@@ -198,7 +203,7 @@ def render_login_page(identity_providers: list[tuple[str, str]]) -> None:
         st.title("Faça seu login")
         st.markdown(
             '<div class="login-description">Entre com sua conta Google para acompanhar '
-            'as finanças e as vendas da sua livraria.</div>',
+            'as finanças e as vendas da sua empresa.</div>',
             unsafe_allow_html=True,
         )
         if identity_providers:
@@ -218,15 +223,15 @@ def render_login_page(identity_providers: list[tuple[str, str]]) -> None:
             )
         st.markdown('<div class="login-divider">acesso seguro</div>', unsafe_allow_html=True)
         st.markdown(
-            '<div class="login-footnote">No primeiro acesso, entre com o Google e cadastre '
-            'o perfil da sua livraria.</div>',
+            '<div class="login-footnote">No primeiro acesso, entre com o Google e escolha '
+            'uma empresa, crie a sua ou experimente o Demo.</div>',
             unsafe_allow_html=True,
         )
 
     with right_panel.container(key="login_right_panel"):
         st.markdown('<span class="login-right-marker"></span>', unsafe_allow_html=True)
         st.markdown('<div class="login-hero-eyebrow">Visão clara, boas decisões</div>', unsafe_allow_html=True)
-        st.markdown('<h2>Sua livraria em equilíbrio.</h2>', unsafe_allow_html=True)
+        st.markdown('<h2>Sua empresa em equilíbrio.</h2>', unsafe_allow_html=True)
         st.markdown(
             '<div class="login-hero-copy">Acompanhe faturamento, caixa e estoque '
             'em um só lugar, com os números que ajudam você a seguir em frente.</div>',
@@ -237,7 +242,7 @@ def render_login_page(identity_providers: list[tuple[str, str]]) -> None:
             width="stretch",
             caption=None,
         )
-        st.markdown('<div class="login-hero-caption">Os números da sua livraria, sempre à vista.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-hero-caption">Os números da sua empresa, sempre à vista.</div>', unsafe_allow_html=True)
 
 
 if not st.user.get("is_logged_in", False):
@@ -264,41 +269,39 @@ register_identity(
     name=st.user.get("name", ""),
     email_verified=email_verified,
 )
-accepted_invitations = accept_company_invitations(
-    st.user.get("email", ""), identity_issuer, identity_subject, email_verified
-)
-user_companies = companies_for_user(identity_issuer, identity_subject)
-if not user_companies:
-    if has_pending_company_invitation(st.user.get("email", "")) and not email_verified:
-        st.error("Há um convite para este e-mail, mas o Google não confirmou que ele foi verificado. Entre em contato com o administrador da livraria.")
-        st.stop()
-    st.markdown("## Cadastre o perfil da sua livraria")
-    st.write("O login continua sendo feito pelo Google. Este perfil separa os dados da sua empresa dos dados de outras livrarias.")
-    with st.form("company_onboarding"):
-        company_name = st.text_input("Nome da livraria", placeholder="Ex.: Livraria Horizonte")
-        submitted = st.form_submit_button("Criar perfil da empresa", type="primary")
-        if submitted:
-            if not company_name.strip():
-                st.error("Informe o nome da livraria.")
-            else:
-                create_company(company_name, identity_issuer, identity_subject)
-                st.rerun()
-    st.stop()
-company_id = int(user_companies[0]["id"])
-company_name = user_companies[0]["name"]
-membership_role = user_companies[0]["role"]
-st.session_state.setdefault("dark_mode", False)
+previous_identity = st.session_state.get("session_identity")
+if previous_identity and previous_identity != (identity_issuer, identity_subject):
+    st.session_state.clear()
+st.session_state["session_identity"] = (identity_issuer, identity_subject)
+st.session_state.setdefault("dark_mode", get_user_setting("dark_mode", identity_issuer, identity_subject) == "true")
 inject_css(dark_mode=st.session_state["dark_mode"])
+user_companies = companies_for_user(identity_issuer, identity_subject)
+if st.session_state.get("demo_active", False):
+    user_companies.append(demo_company())
+selected_id = st.session_state.get("active_company_id")
+company_ids = {int(item["id"]) for item in user_companies}
+if selected_id is not None and selected_id not in company_ids:
+    clear_company_session()
+    st.session_state.pop("active_company_id", None)
+if st.session_state.get("workspace_picker") or selected_id not in company_ids:
+    workspace_picker(user_companies if not st.session_state.get("demo_active") else [item for item in user_companies if not item["is_demo"]],
+                     identity_issuer, identity_subject, st.logout)
+    st.stop()
+active_company = next(item for item in user_companies if int(item["id"]) == selected_id)
+company_id = int(active_company["id"])
+company_name = active_company["name"]
+company_segment = active_company["segment"]
+membership_role = active_company["role"]
+can_edit = membership_role == "administrator"
+can_manage_team = can_edit
+PRODUCT_LABEL = "Título" if company_segment == "Livraria" else "Produto"
+PRODUCT_GROUP = "Títulos" if company_segment == "Livraria" else "Produtos"
+role_context = (company_id, membership_role)
+if st.session_state.get("role_context") not in (None, role_context):
+    clear_company_session()
+st.session_state["role_context"] = role_context
 
-ROLE_LABELS = {
-    "administrator": "Admin",
-    "manager": "Gestor",
-    "collaborator": "Colaborador",
-}
-can_edit = membership_role in {"administrator", "manager"}
-can_manage_team = membership_role == "administrator"
-
-REVENUE_CATEGORIES = ["Vendas de livros", "Vendas online", "Eventos", "Assinaturas", "Outras receitas"]
+REVENUE_CATEGORIES = ["Vendas de livros" if company_segment == "Livraria" else "Vendas de produtos e serviços", "Vendas online", "Eventos", "Assinaturas", "Outras receitas"]
 EXPENSE_CATEGORIES = ["Fornecedores", "Aluguel", "Folha e encargos", "Marketing", "Fretes", "Impostos", "Tecnologia", "Outras despesas"]
 PAYMENT_METHODS = ["PIX", "Cartão", "Dinheiro", "Boleto", "Transferência"]
 
@@ -333,9 +336,11 @@ def go_to_overview() -> None:
 
 
 def navigate_to(page: str) -> None:
+    if page == "Conta":
+        page = "Meu perfil"
     if page == "Equipe":
         st.session_state["account_team_expanded"] = True
-        page = "Conta"
+        page = "Empresa"
     st.session_state["active_page"] = page
     st.query_params["page"] = page
 
@@ -347,9 +352,8 @@ def clear_horus_session() -> None:
 
 
 def switch_company(company_id: int) -> None:
-    if company_id != st.session_state.get("active_company_id"):
-        clear_horus_session()
-    st.session_state["active_company_id"] = company_id
+    company = next(item for item in user_companies if int(item["id"]) == company_id)
+    activate_company(company_id, bool(company["is_demo"]), home=False)
 
 
 def toggle_financial_values() -> None:
@@ -358,13 +362,11 @@ def toggle_financial_values() -> None:
 
 def toggle_dark_mode() -> None:
     st.session_state["dark_mode"] = not st.session_state.get("dark_mode", False)
+    set_user_settings({"dark_mode": str(st.session_state["dark_mode"]).lower()}, identity_issuer, identity_subject)
 
 
 def logout_user() -> None:
-    clear_horus_session()
-    for session_key in list(st.session_state.keys()):
-        if session_key.startswith(("gemini_session_key_", "gemini_key_input_", "openai_session_key_", "openai_key_input_")):
-            del st.session_state[session_key]
+    st.session_state.clear()
     st.logout()
 
 
@@ -441,6 +443,13 @@ def account_menu() -> None:
                     st.caption(account_email)
                 st.caption(f"Empresa ativa: {company_name}")
                 st.caption(f"Perfil: {ROLE_LABELS.get(membership_role, 'Colaborador')}")
+                st.button("Meu perfil", icon=PAGE_ICONS["Meu perfil"], key="account_profile",
+                          on_click=navigate_to, args=("Meu perfil",), width="stretch")
+                if can_manage_team:
+                    st.button("Gerenciar empresa", icon=PAGE_ICONS["Empresa"], key="account_company",
+                              on_click=navigate_to, args=("Empresa",), width="stretch")
+                st.button("Empresas e convites", icon=":material/domain:", key="account_workspaces",
+                          on_click=open_workspace_picker, width="stretch")
                 if len(user_companies) > 1:
                     st.divider()
                     st.caption("Mudar empresa / perfil")
@@ -479,24 +488,22 @@ PAGE_ICONS = {
     "API do Horus": ":material/sync:",
     "Configuração de IA": ":material/psychology:",
     "Equipe": ":material/groups:",
-    "Conta": ":material/account_circle:",
+    "Empresa": ":material/store:",
+    "Meu perfil": ":material/account_circle:",
 }
 
 SHORTCUT_TARGETS = [
     "Visão geral", "Curva ABC", "Relatórios", "Fluxo de caixa", "Contas",
     "Insights com IA", "Vendas e estoque", "Lançamentos", "Orçamento", "API do Horus",
-    "Configuração de IA", "Equipe", "Conta",
+    "Configuração de IA", "Empresa", "Meu perfil",
 ]
 
 
 def accessible_shortcuts(role: str) -> list[str]:
-    allowed = {
-        "Visão geral", "Curva ABC", "Relatórios", "Fluxo de caixa", "Contas", "Insights com IA"
-    }
-    if role in {"administrator", "manager"}:
-        allowed.update({"Vendas e estoque", "Lançamentos", "Orçamento"})
+    allowed = {"Visão geral", "Curva ABC", "Relatórios", "Fluxo de caixa", "Contas", "Insights com IA",
+               "Vendas e estoque", "Lançamentos", "Orçamento", "Meu perfil"}
     if role == "administrator":
-        allowed.update({"API do Horus", "Configuração de IA", "Equipe", "Conta"})
+        allowed.update({"API do Horus", "Configuração de IA", "Empresa"})
     return [target for target in SHORTCUT_TARGETS if target in allowed]
 
 
@@ -515,8 +522,8 @@ def collapsed_nav_rail(role: str) -> None:
         "Acompanhamento": [
             "Visão geral", "Curva ABC", "Relatórios", "Fluxo de caixa", "Contas", "Insights com IA",
         ],
-        "Alimentar e planejar": ["Vendas e estoque", "Lançamentos", "Orçamento"] if role in {"administrator", "manager"} else [],
-        "Gestão da Plataforma": ["API do Horus", "Configuração de IA", "Conta"] if role == "administrator" else [],
+        "Alimentar e planejar": ["Vendas e estoque", "Lançamentos", "Orçamento"],
+        "Gestão da Plataforma": (["Empresa", "API do Horus", "Configuração de IA"] if role == "administrator" else []) + ["Meu perfil"],
     }
     groups = {group: destinations for group, destinations in groups.items() if destinations}
     group_icons = {
@@ -585,7 +592,7 @@ def collapsed_nav_rail(role: str) -> None:
 
 def home_shortcuts_settings() -> None:
     available = accessible_shortcuts(membership_role)
-    current_value = get_app_setting("home_shortcuts", company_id)
+    current_value = get_user_setting(f"home_shortcuts_{company_id}", identity_issuer, identity_subject, get_app_setting("home_shortcuts", company_id))
     try:
         saved_shortcuts = json.loads(current_value) if current_value else ["Visão geral", "Vendas e estoque", "Lançamentos", "Contas"]
     except (json.JSONDecodeError, TypeError):
@@ -597,30 +604,28 @@ def home_shortcuts_settings() -> None:
             available,
             default=saved_shortcuts,
             format_func=lambda target: target,
-            help="Os Favoritos aparecem na Home de todas as pessoas com acesso a esta livraria.",
+            help="Estes Favoritos são pessoais e valem para a empresa selecionada.",
         )
         save = st.form_submit_button("Salvar Favoritos", type="primary")
     if save:
         if not selected:
             st.error("Selecione pelo menos uma tela para manter um atalho na Home.")
         else:
-            set_app_settings(
-                {"home_shortcuts": json.dumps(selected, ensure_ascii=False)},
-                company_id,
-                identity_issuer,
-                identity_subject,
+            set_user_settings(
+                {f"home_shortcuts_{company_id}": json.dumps(selected, ensure_ascii=False)},
+                identity_issuer, identity_subject,
             )
             st.success("Favoritos da Home atualizados.")
 
 
 def home_page(df: pd.DataFrame, start: date, end: date) -> None:
-    display_name = st.user.get("given_name") or st.user.get("name", "").strip()
+    display_name = get_user_setting("display_name", identity_issuer, identity_subject) or st.user.get("given_name") or st.user.get("name", "").strip()
     if not display_name:
         display_name = st.user.get("email", "").split("@", 1)[0] or "por aqui"
     render_dashboard_welcome(company_id, display_name)
     start, end = render_period_filter(start, end)
 
-    raw_shortcuts = get_app_setting("home_shortcuts", company_id)
+    raw_shortcuts = get_user_setting(f"home_shortcuts_{company_id}", identity_issuer, identity_subject, get_app_setting("home_shortcuts", company_id))
     try:
         shortcuts = json.loads(raw_shortcuts) if raw_shortcuts else ["Visão geral", "Vendas e estoque", "Lançamentos", "Contas"]
     except (json.JSONDecodeError, TypeError):
@@ -654,78 +659,40 @@ def home_page(df: pd.DataFrame, start: date, end: date) -> None:
 
 
 def account_settings_page() -> None:
-    page_header("Gestão da plataforma", "Conta", "Dados da sua conta e configurações da empresa selecionada.")
-    account_name = st.user.get("name", "") or "Conta Google"
-    account_email = st.user.get("email", "")
-    st.subheader(account_name)
-    if account_email:
-        st.caption(account_email)
-    st.write(f"**Empresa:** {company_name}")
-    st.write(f"**Perfil:** {ROLE_LABELS.get(membership_role, 'Colaborador')}")
+    page_header("Minha conta", "Meu perfil", "Seu perfil, preferências pessoais e participação nas empresas.")
+    personal_profile(active_company, identity_issuer, identity_subject, logout_user,
+                     home_shortcuts_settings, toggle_dark_mode)
 
-    if can_manage_team:
-        with st.expander("Equipe", expanded=st.session_state.get("account_team_expanded", False)):
-            team_page(show_header=False)
 
-    if can_edit:
-        render_company_cover_settings(company_id)
-        with st.expander("Favoritos da Home"):
-            st.caption("Escolha os acessos rápidos exibidos na tela inicial desta livraria.")
-            home_shortcuts_settings()
-    if can_manage_team:
-        with st.expander("Perfil da empresa"):
-            with st.form("company_profile_form"):
-                updated_name = st.text_input("Nome da livraria", value=company_name)
-                if st.form_submit_button("Salvar perfil", type="primary"):
-                    if update_company(company_id, updated_name, identity_issuer, identity_subject):
-                        st.success("Perfil atualizado.")
-                        st.rerun()
-                    st.error("Não foi possível atualizar o perfil.")
-
-    if can_edit:
-        with st.expander("Acessos de colaboradores"):
-            collaborators = [member for member in company_members(company_id) if member["role"] == "collaborator"]
-            if not collaborators:
-                st.info("Não há colaboradores vinculados a esta empresa.")
-            else:
-                collaborator_options = {
-                    f"{member['issuer']}|{member['subject']}": member
-                    for member in collaborators
-                }
-                with st.form(f"remove_collaborator_form_{company_id}"):
-                    selected_key = st.selectbox(
-                        "Colaborador",
-                        list(collaborator_options),
-                        format_func=lambda key: (
-                            f"{collaborator_options[key]['name']} · {collaborator_options[key]['email']}"
-                        ),
-                    )
-                    st.caption("Isso remove o acesso desta pessoa à empresa. A conta Google e os dados da livraria não são excluídos.")
-                    confirm_remove = st.checkbox("Confirmo a remoção do acesso deste colaborador.")
-                    remove_submitted = st.form_submit_button(
-                        "Remover acesso",
-                        type="secondary",
-                    )
-                if remove_submitted and not confirm_remove:
-                    st.error("Confirme a remoção do acesso antes de continuar.")
-                if remove_submitted and confirm_remove:
-                    selected = collaborator_options[selected_key]
-                    try:
-                        remove_company_member(
-                            company_id,
-                            selected["issuer"],
-                            selected["subject"],
-                            identity_issuer,
-                            identity_subject,
-                        )
-                        st.success("Acesso do colaborador removido.")
-                        st.rerun()
-                    except (PermissionError, ValueError) as exc:
-                        st.error(str(exc))
-
-    st.divider()
-    if st.button("Sair", icon=":material/logout:", type="secondary", key="logout_button"):
-        logout_user()
+def company_settings_page() -> None:
+    page_header("Gestão da empresa", "Empresa", f"Informações e acessos de {company_name}.")
+    if not can_manage_team:
+        st.info("Somente proprietários podem gerenciar a empresa.")
+        return
+    with st.container(border=True):
+        st.subheader("Perfil da empresa")
+        with st.form(f"company_profile_form_{company_id}"):
+            updated_name = st.text_input("Nome da empresa", value=company_name, max_chars=120)
+            segment = st.selectbox("Tipo de empresa", COMPANY_SEGMENTS, index=COMPANY_SEGMENTS.index(company_segment))
+            contact = st.text_input("E-mail de contato (opcional)", value=active_company["contact_email"], max_chars=254)
+            city = st.text_input("Cidade (opcional)", value=active_company["city"], max_chars=120)
+            save = st.form_submit_button("Salvar empresa", type="primary")
+        if save:
+            try:
+                if update_company(company_id, updated_name, identity_issuer, identity_subject, segment, contact, city):
+                    st.rerun()
+                st.error("Informe o nome da empresa.")
+            except (ValueError, PermissionError) as exc:
+                st.error(str(exc))
+    render_company_cover_settings(company_id)
+    with st.expander("Equipe e convites", expanded=st.session_state.get("account_team_expanded", False)):
+        team_page(show_header=False)
+    with st.container(border=True):
+        st.subheader("Integrações da empresa")
+        with st.container(horizontal=True):
+            st.button("API do Horus", on_click=navigate_to, args=("API do Horus",), key="company_horus")
+            st.button("Configuração de IA", on_click=navigate_to, args=("Configuração de IA",), key="company_ai")
+        st.caption(f"Banco em uso: {database_backend()}")
 
 
 def load_transactions() -> pd.DataFrame:
@@ -746,6 +713,8 @@ def scope_df(df: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
 
 def default_period() -> tuple[date, date]:
     today = date.today()
+    if active_company["is_demo"]:
+        return today.replace(day=1), today.replace(day=calendar.monthrange(today.year, today.month)[1])
     return today.replace(day=1), today
 
 
@@ -775,7 +744,7 @@ def dashboard_cover_bytes(company_id: int) -> bytes | None:
 def render_company_cover_settings(company_id: int) -> None:
     cover = dashboard_cover_bytes(company_id)
     with st.expander("Imagem de capa da empresa"):
-        st.caption("A capa é compartilhada com as pessoas que têm acesso a esta empresa. Somente o perfil Admin pode alterá-la.")
+        st.caption("A capa é compartilhada com as pessoas que têm acesso a esta empresa. Somente proprietários podem alterá-la.")
         with st.form(f"dashboard_cover_form_{company_id}", clear_on_submit=True):
             uploaded_cover = st.file_uploader(
                 "Escolha uma imagem",
@@ -822,7 +791,7 @@ def render_dashboard_welcome(company_id: int, display_name: str) -> None:
         welcome_col, image_col = st.columns([1.1, 1], vertical_alignment="center")
         with welcome_col:
             st.subheader(f"Olá, {display_name}!")
-            st.write(f"Bem-vindo(a) à gestão da **{company_name}**. Aqui está o panorama da sua livraria.")
+            st.write(f"Bem-vindo(a) à gestão de **{company_name}**. Aqui está o panorama da sua empresa ({company_segment.lower()}).")
         with image_col:
             if cover:
                 st.image(cover, width="stretch")
@@ -934,20 +903,20 @@ def sidebar() -> tuple[str, date, date, int]:
             ("Lançamentos", "Lançamentos"),
             ("Orçamento", "Orçamento"),
         ]
-        platform_pages = []
+        platform_pages = [("Meu perfil", "Meu perfil")]
         if selected_membership["role"] == "administrator":
             platform_pages.extend([
                 ("API do Horus", "API do Horus"),
                 ("Configuração de IA", "Configuração de IA"),
-                ("Conta", "Conta"),
+                ("Empresa", "Empresa"),
             ])
         old_page = st.query_params.get("page") or st.session_state.get("page_navigation", "Home")
-        old_page_map = {"Configuração de API": "API do Horus"}
+        old_page_map = {"Configuração de API": "API do Horus", "Conta": "Meu perfil"}
         st.session_state.setdefault("active_page", old_page_map.get(old_page, old_page))
         if st.session_state["active_page"] == "Equipe":
             navigate_to("Equipe")
-        if selected_membership["role"] not in {"administrator", "manager"}:
-            data_pages = []
+        if st.session_state["active_page"] == "Conta":
+            navigate_to("Conta")
         available_pages = {"Home"} | {target for _, target in view_pages + data_pages + platform_pages}
         if st.session_state.get("active_page") not in available_pages:
             navigate_to("Home")
@@ -1016,7 +985,7 @@ def sidebar() -> tuple[str, date, date, int]:
 
 
 def overview(df: pd.DataFrame, start: date, end: date) -> None:
-    page_header("Painel executivo", "Visão geral", "Indicadores essenciais para acompanhar liquidez, resultado e compromissos da livraria.")
+    page_header("Painel executivo", "Visão geral", "Indicadores essenciais para acompanhar liquidez, resultado e compromissos da empresa.")
     sdf = scope_df(df, start, end)
     paid = sdf[sdf["status"] == "Pago"] if not sdf.empty else sdf
     revenue = paid.loc[paid["kind"] == "Receita", "amount"].sum() if not paid.empty else 0
@@ -1219,12 +1188,12 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
 
         rank_cols = st.columns(2)
         with rank_cols[0]:
-            st.subheader("Curva ABC de títulos")
+            st.subheader(f"Curva ABC de {PRODUCT_GROUP.lower()}")
             rank = sales["product_rank"].head(20)
             if rank.empty:
-                st.info("Sem títulos identificados.")
+                st.info(f"Sem {PRODUCT_GROUP.lower()} identificados.")
             else:
-                fig = px.bar(rank, x="title", y="net_revenue", color="class", labels={"title": "Título", "net_revenue": "Receita", "class": "Classe"})
+                fig = px.bar(rank, x="title", y="net_revenue", color="class", labels={"title": PRODUCT_LABEL, "net_revenue": "Receita", "class": "Classe"})
                 fig.update_layout(height=360, margin=dict(l=8, r=8, t=12, b=80), xaxis_tickangle=-35, legend_title_text="")
                 if hide_values:
                     st.caption("Valores do gráfico ocultos. Use o ícone de olho acima para mostrá-los.")
@@ -1331,20 +1300,24 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
 
 
 def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> None:
-    page_header("Dados comerciais", "Vendas e estoque", "Carregue os dados que alimentam faturamento por título, clientes, canais, curva ABC e giro.")
+    page_header("Dados comerciais", "Vendas e estoque", "Carregue os dados que alimentam faturamento por produto, clientes, canais, curva ABC e giro.")
     if not can_edit:
         st.info("Seu perfil permite consultar os dados da empresa, mas não importar ou alterar vendas e estoque.")
         if not sales_df.empty:
             st.subheader("Vendas carregadas")
             st.dataframe(
                 sales_df[["sale_date", "order_id", "channel", "sku", "title", "quantity", "unit_price", "status"]]
-                .rename(columns={"sale_date": "Data", "order_id": "Pedido", "channel": "Canal", "sku": "SKU", "title": "Título", "quantity": "Quantidade", "unit_price": "Preço unitário", "status": "Status"})
+                .rename(columns={"sale_date": "Data", "order_id": "Pedido", "channel": "Canal", "sku": "SKU", "title": PRODUCT_LABEL, "quantity": "Quantidade", "unit_price": "Preço unitário", "status": "Status"})
                 .head(100),
                 width="stretch",
                 hide_index=True,
             )
         if not inventory_df.empty:
-            st.caption(f"Posições de estoque disponíveis para consulta: {len(inventory_df)}.")
+            st.subheader("Estoque carregado")
+            st.dataframe(inventory_df[["snapshot_date", "sku", "title", "quantity", "unit_cost", "minimum_quantity"]]
+                         .rename(columns={"snapshot_date": "Data", "sku": "SKU", "title": PRODUCT_LABEL,
+                                          "quantity": "Quantidade", "unit_cost": "Custo unitário", "minimum_quantity": "Estoque mínimo"}),
+                         width="stretch", hide_index=True)
         return
     st.caption("O app aceita CSV ou sincronização pela API. O formato abaixo é por item de pedido: uma linha para cada combinação de pedido e SKU.")
     st.info("Padrão obrigatório: números sem separador de milhar e com ponto decimal (1234.56); datas AAAA-MM-DD. Não use R$, %, vírgula decimal ou fórmulas. CSV separado por vírgula ou ponto e vírgula; UTF-8 recomendado. Campos numéricos opcionais vazios valem zero. O arquivo inteiro é bloqueado se houver erro.")
@@ -1402,7 +1375,7 @@ def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> Non
     if not sales_df.empty:
         st.subheader("Vendas carregadas")
         sales_table = sales_df[["sale_date", "order_id", "customer", "channel", "sku", "title", "quantity", "unit_price", "unit_cost", "status"]].rename(
-            columns={"sale_date": "Data", "order_id": "Pedido", "customer": "Cliente", "channel": "Canal", "sku": "SKU", "title": "Título", "quantity": "Quantidade", "unit_price": "Preço unitário", "unit_cost": "Custo unitário", "status": "Status"}
+            columns={"sale_date": "Data", "order_id": "Pedido", "customer": "Cliente", "channel": "Canal", "sku": "SKU", "title": PRODUCT_LABEL, "quantity": "Quantidade", "unit_price": "Preço unitário", "unit_cost": "Custo unitário", "status": "Status"}
         )
         st.dataframe(sales_table.head(100), width="stretch", hide_index=True)
     if not inventory_df.empty:
@@ -1451,7 +1424,7 @@ def render_import_history(sales_df, inventory_df):
 
 
 def abc_page(sales_df: pd.DataFrame, start: date, end: date) -> None:
-    page_header("Análise de concentração", "Curva ABC", "Classifique títulos ou clientes pelo peso nas vendas e veja a participação acumulada.")
+    page_header("Análise de concentração", "Curva ABC", f"Classifique {PRODUCT_GROUP.lower()} ou clientes pelo peso nas vendas e veja a participação acumulada.")
     start, end = render_period_filter(start, end)
     sales = calculate_sales(sales_df, start, end)
     if sales is None or sales["rows"].empty:
@@ -1460,8 +1433,8 @@ def abc_page(sales_df: pd.DataFrame, start: date, end: date) -> None:
 
     controls = st.columns(4)
     with controls[0]:
-        dimension = st.selectbox("Analisar", ["Títulos", "Clientes"], key="abc_dimension")
-    if dimension == "Títulos":
+        dimension = st.selectbox("Analisar", [PRODUCT_GROUP, "Clientes"], key="abc_dimension")
+    if dimension == PRODUCT_GROUP:
         measures = ["Faturamento líquido", "Exemplares vendidos"]
     else:
         measures = ["Faturamento líquido", "Pedidos"]
@@ -1474,7 +1447,7 @@ def abc_page(sales_df: pd.DataFrame, start: date, end: date) -> None:
         limit_b = st.slider("Limite acumulado da classe B (%)", min_value=limit_a + 1, max_value=100, value=limit_b_default, step=1, key="abc_limit_b")
 
     rows = sales["rows"].copy()
-    if dimension == "Títulos":
+    if dimension == PRODUCT_GROUP:
         table = rows.groupby(["sku", "title"], as_index=False).agg(
             revenue=("net_revenue", "sum"),
             units=("net_units", "sum"),
@@ -1541,7 +1514,7 @@ def abc_page(sales_df: pd.DataFrame, start: date, end: date) -> None:
 
     st.subheader("Classificação detalhada")
     result = table[["position", "identifier", "name", value_column, "share_pct", "cumulative_pct", "class"]].copy()
-    result.columns = ["Posição", "Código", "Título" if dimension == "Títulos" else "Cliente", measure, "Participação %", "Acumulado %", "Classe"]
+    result.columns = ["Posição", "Código", PRODUCT_LABEL if dimension == PRODUCT_GROUP else "Cliente", measure, "Participação %", "Acumulado %", "Classe"]
     if value_column == "revenue":
         result[measure] = result[measure].map(money)
     else:
@@ -1586,7 +1559,7 @@ def api_configuration_page() -> None:
 
     url_base = st.text_input(
         "URL base da API",
-        placeholder="https://servidor-da-livraria/Horus/api/TServerB2B/",
+        placeholder="https://servidor-da-empresa/Horus/api/TServerB2B/",
         key="horus_base_url_input",
     )
     credential_cols = st.columns(2)
@@ -1731,10 +1704,10 @@ def team_page(show_header: bool = True) -> None:
         page_header(
             "Acesso da empresa",
             "Equipe",
-            "Gerencie quem pode consultar e operar os dados desta livraria.",
+            "Gerencie quem pode consultar e operar os dados desta empresa.",
         )
     if not can_manage_team:
-        st.error("Somente um administrador/suporte desta empresa pode gerenciar os acessos.")
+        st.error("Somente proprietários desta empresa podem gerenciar os acessos.")
         return
 
     notice_key = f"team_invite_notice_{company_id}"
@@ -1744,14 +1717,11 @@ def team_page(show_header: bool = True) -> None:
         if st.button("Fechar mensagem", key=f"dismiss_team_notice_{company_id}"):
             st.session_state.pop(notice_key, None)
         else:
-            if level == "success":
-                st.success(message)
-            else:
-                st.info(message)
+            getattr(st, level)(message)
 
     st.caption(
-        "Administrador/suporte e gestor podem operar os dados. Colaborador tem acesso somente para consulta. "
-        "Convites são vinculados ao e-mail usado no login Google; o app não envia e-mails automaticamente."
+        "Proprietários gerenciam os dados e os acessos. Colaboradores têm acesso somente para consulta. "
+        "Os convites precisam ser aceitos pela conta Google correspondente e são válidos por sete dias."
     )
     members = company_members(company_id)
     member_table = pd.DataFrame([
@@ -1762,29 +1732,20 @@ def team_page(show_header: bool = True) -> None:
     st.dataframe(member_table, width="stretch", hide_index=True)
 
     with st.container(border=True):
-        st.subheader("Adicionar pessoa")
+        st.subheader("Convidar pessoa")
         with st.form(f"invite_company_member_{company_id}"):
             invite_email = st.text_input("E-mail da conta Google", placeholder="pessoa@gmail.com")
             invite_role = st.selectbox(
                 "Perfil",
-                COMPANY_ROLES,
+                ("collaborator", "administrator"),
                 format_func=lambda value: ROLE_LABELS[value],
             )
-            invite_submitted = st.form_submit_button("Adicionar ou convidar", type="primary")
+            invite_submitted = st.form_submit_button("Registrar convite", type="primary")
         if invite_submitted:
             try:
-                result = invite_company_member(
-                    company_id, invite_email, invite_role, identity_issuer, identity_subject
+                st.session_state[notice_key] = invite_person(
+                    company_id, company_name, invite_email, invite_role, identity_issuer, identity_subject
                 )
-                if result == "already_member":
-                    st.session_state[notice_key] = ("info", "Essa pessoa já tem acesso à empresa.")
-                elif result == "added":
-                    st.session_state[notice_key] = ("success", "Pessoa adicionada à equipe.")
-                else:
-                    st.session_state[notice_key] = (
-                        "success",
-                        "Convite registrado. A pessoa receberá acesso quando entrar com o Google usando esse e-mail.",
-                    )
                 st.session_state["account_team_expanded"] = True
                 st.rerun()
             except (ValueError, PermissionError) as exc:
@@ -1829,7 +1790,12 @@ def team_page(show_header: bool = True) -> None:
                     st.rerun()
                 except (ValueError, PermissionError) as exc:
                     st.error(str(exc))
-            if st.button("Remover acesso", key=f"remove_member_{company_id}"):
+            with st.form(f"remove_member_form_{company_id}"):
+                confirm_remove = st.checkbox("Confirmo a remoção do acesso desta pessoa")
+                remove_submitted = st.form_submit_button("Remover acesso", key=f"remove_member_{company_id}")
+            if remove_submitted and not confirm_remove:
+                st.error("Confirme a remoção do acesso antes de continuar.")
+            if remove_submitted and confirm_remove:
                 try:
                     remove_company_member(
                         company_id,
@@ -2003,7 +1969,9 @@ def cashflow_page(df: pd.DataFrame, start: date, end: date) -> None:
 
 def budget_page(df: pd.DataFrame) -> None:
     page_header("Planejamento", "Orçamento", "Defina limites por categoria e compare o planejado com o realizado.")
-    month = st.selectbox("Mês de referência", pd.period_range("2026-01", "2027-12", freq="M").astype(str), index=8)
+    current_month = pd.Period(date.today(), freq="M")
+    month = st.selectbox("Mês de referência", pd.period_range(current_month-12, current_month+12, freq="M").astype(str),
+                         index=12, key=f"budget_month_{company_id}")
     if can_edit:
         with st.form("budget_form"):
             category = st.selectbox("Categoria", EXPENSE_CATEGORIES)
@@ -2122,8 +2090,11 @@ def ai_insights_page(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: pd.
         "Insights com IA",
         "Use os indicadores da empresa selecionada para gerar uma leitura financeira em linguagem simples.",
     )
+    if not can_edit:
+        st.info("A geração de análises com IA está disponível para proprietários. Você pode consultar os indicadores nos painéis.")
+        return
     st.warning(
-        "Ao gerar a análise, o Skopos envia ao Google Gemini indicadores agregados da empresa e do período, incluindo até cinco títulos de livros. "
+        "Ao gerar a análise, o Skopos envia ao Google Gemini indicadores agregados da empresa e do período, incluindo até cinco produtos. "
         "Nomes de clientes, e-mails, descrições de lançamentos e identificadores de empresa não são enviados. "
         "A política do Google difere por nível: no gratuito, solicitações e respostas podem ser usadas para melhorar produtos e revistas por pessoas; no pago, não são usadas para esse fim. Evite enviar informações sigilosas pelo nível gratuito."
     )
@@ -2176,12 +2147,12 @@ active_company = next(item for item in user_companies if int(item["id"]) == sele
 company_id = selected_company_id
 company_name = active_company["name"]
 membership_role = active_company["role"]
-can_edit = membership_role in {"administrator", "manager"}
+can_edit = membership_role == "administrator"
 can_manage_team = membership_role == "administrator"
 collapsed_nav_rail(membership_role)
 account_menu()
-if accepted_invitations:
-    st.success(f"Acesso concedido a {accepted_invitations} empresa(s) pelo convite recebido no Google.")
+if active_company["is_demo"]:
+    st.info("Demonstração com dados fictícios. Este ambiente permite somente consulta.")
 df = load_transactions()
 sales_df = load_sales()
 inventory_df = load_inventory()
@@ -2210,19 +2181,16 @@ elif page == "API do Horus":
     if membership_role == "administrator":
         api_configuration_page()
     else:
-        st.error("Somente o perfil Admin pode acessar as integrações da empresa.")
+        st.error("Somente proprietários podem acessar as integrações da empresa.")
 elif page == "Configuração de IA":
     if membership_role == "administrator":
         ai_configuration_page()
     else:
-        st.error("Somente o perfil Admin pode alterar a configuração de IA da empresa.")
+        st.error("Somente proprietários podem alterar a configuração de IA da empresa.")
 elif page == "Equipe":
     team_page()
-elif page == "Conta":
+elif page == "Meu perfil":
     account_settings_page()
+elif page == "Empresa":
+    company_settings_page()
 
-with st.sidebar:
-    st.divider()
-    if can_edit and st.button("Carregar dados de demonstração", width="stretch"):
-        seed_demo(company_id, identity_issuer, identity_subject)
-        st.rerun()

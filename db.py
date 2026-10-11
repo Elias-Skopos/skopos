@@ -4,15 +4,16 @@ import sqlite3
 import os
 from uuid import uuid4
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
 
 DB_PATH = Path(__file__).with_name("livraria.db")
-COMPANY_ROLES = ("administrator", "manager", "collaborator")
-EDIT_ROLES = ("administrator", "manager")
+COMPANY_ROLES = ("administrator", "collaborator")
+EDIT_ROLES = ("administrator",)
+COMPANY_SEGMENTS = ("Livraria", "Padaria", "Bar", "Restaurante", "Comércio", "Serviços", "Outro")
 DATABASE_URL = os.environ.get("SKOPOS_DATABASE_URL", "")
 
 
@@ -76,6 +77,14 @@ def _migrate_membership_roles(conn: sqlite3.Connection) -> None:
 
 
 def _require_role(conn: sqlite3.Connection, company_id: int, issuer: str, subject: str, allowed: tuple[str, ...]) -> None:
+    # Serialize permission changes with other writes and voluntary departures.
+    if getattr(conn, "is_postgres", False):
+        company = conn.execute("SELECT is_demo FROM companies WHERE id=? FOR UPDATE", (company_id,)).fetchone()
+    else:
+        conn.execute("UPDATE companies SET id=id WHERE id=?", (company_id,))
+        company = conn.execute("SELECT is_demo FROM companies WHERE id=?", (company_id,)).fetchone()
+    if not company or company[0]:
+        raise PermissionError("O ambiente de demonstração permite somente consulta.")
     row = conn.execute(
         "SELECT role FROM company_memberships WHERE company_id=? AND issuer=? AND subject=?",
         (company_id, issuer, subject),
@@ -116,6 +125,15 @@ def _rebuild_tenant_table(conn: sqlite3.Connection, table: str, create_sql: str,
 
 def init_db() -> None:
     with connection() as conn:
+        if not getattr(conn, "is_postgres", False) and _columns(conn, "companies") and "segment" not in _columns(conn, "companies"):
+            backup_dir = DB_PATH.parent / "backup_account_upgrade"
+            backup_dir.mkdir(exist_ok=True)
+            backup_path = backup_dir / f"livraria_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.db"
+            target = sqlite3.connect(backup_path)
+            try:
+                conn.backup(target)
+            finally:
+                target.close()
         if getattr(conn, "is_postgres", False):
             conn.execute("SELECT pg_advisory_xact_lock(736567001)")
         conn.executescript(
@@ -189,6 +207,28 @@ def init_db() -> None:
             """
         )
         _migrate_membership_roles(conn)
+        # Keep existing administrators as owners; legacy managers become read-only.
+        for table in ("company_memberships", "company_invitations"):
+            conn.execute(f"UPDATE {table} SET role='collaborator' WHERE role='manager'")
+        for column, definition in {
+            "segment": "TEXT NOT NULL DEFAULT 'Livraria'",
+            "contact_email": "TEXT NOT NULL DEFAULT ''",
+            "city": "TEXT NOT NULL DEFAULT ''",
+            "is_demo": "INTEGER NOT NULL DEFAULT 0",
+            "demo_key": "TEXT",
+        }.items():
+            if column not in _columns(conn, "companies"):
+                conn.execute(f"ALTER TABLE companies ADD COLUMN {column} {definition}")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_demo_key ON companies(demo_key)")
+        for column, definition in {
+            "status": "TEXT NOT NULL DEFAULT 'pending'",
+            "expires_at": "TEXT NOT NULL DEFAULT ''",
+        }.items():
+            if column not in _columns(conn, "company_invitations"):
+                conn.execute(f"ALTER TABLE company_invitations ADD COLUMN {column} {definition}")
+        conn.execute("""CREATE TABLE IF NOT EXISTS user_settings (
+            issuer TEXT NOT NULL, subject TEXT NOT NULL, setting_key TEXT NOT NULL,
+            setting_value TEXT NOT NULL DEFAULT '', PRIMARY KEY(issuer,subject,setting_key))""")
         if "email_verified" not in _columns(conn, "users"):
             conn.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
         _add_company_column(conn, "transactions")
@@ -249,28 +289,55 @@ def register_identity(issuer: str, subject: str, email: str = "", name: str = ""
 
 def companies_for_user(issuer: str, subject: str) -> list[dict]:
     with connection() as conn:
-        rows = conn.execute("""SELECT c.id, c.name, m.role FROM companies c
-            JOIN company_memberships m ON m.company_id=c.id WHERE m.issuer=? AND m.subject=? ORDER BY c.id""",
+        rows = conn.execute("""SELECT c.id, c.name, c.segment, c.contact_email, c.city, c.is_demo,
+            CASE m.role WHEN 'manager' THEN 'collaborator' ELSE m.role END AS role FROM companies c
+            JOIN company_memberships m ON m.company_id=c.id WHERE m.issuer=? AND m.subject=? AND c.is_demo=0 ORDER BY c.id""",
             (issuer, subject)).fetchall()
     return [dict(row) for row in rows]
 
 
-def accept_company_invitations(email: str, issuer: str, subject: str, email_verified: bool) -> int:
-    clean_email = email.strip().casefold()
-    if not email_verified or not clean_email:
-        return 0
+def _invitation_is_current(invitation: dict) -> bool:
+    if invitation["status"] != "pending":
+        return False
+    expiry = invitation["expires_at"]
+    if not expiry:
+        expiry = (datetime.fromisoformat(str(invitation["created_at"])) + timedelta(days=7)).isoformat()
+    deadline = datetime.fromisoformat(expiry)
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    return deadline > datetime.now(timezone.utc)
+
+
+def invitations_for_user(issuer: str, subject: str) -> list[dict]:
     with connection() as conn:
-        invitations = conn.execute(
-            "SELECT id, company_id, role FROM company_invitations WHERE email=?",
-            (clean_email,),
-        ).fetchall()
-        for invitation in invitations:
-            conn.execute(
-                "INSERT OR IGNORE INTO company_memberships(company_id, issuer, subject, role) VALUES (?, ?, ?, ?)",
-                (invitation["company_id"], issuer, subject, invitation["role"]),
-            )
-            conn.execute("DELETE FROM company_invitations WHERE id=?", (invitation["id"],))
-    return len(invitations)
+        user = conn.execute("SELECT email,email_verified FROM users WHERE issuer=? AND subject=?", (issuer, subject)).fetchone()
+        if not user or not user["email_verified"]:
+            return []
+        rows = conn.execute("""SELECT i.*,c.name,c.segment FROM company_invitations i
+            JOIN companies c ON c.id=i.company_id
+            WHERE i.email=? AND i.status='pending' AND c.is_demo=0 ORDER BY i.created_at DESC""", (user["email"],)).fetchall()
+    return [dict(row) for row in rows if _invitation_is_current(dict(row))]
+
+
+def respond_company_invitation(invitation_id: int, issuer: str, subject: str, accept: bool) -> int:
+    with connection() as conn:
+        if not getattr(conn, "is_postgres", False):
+            conn.execute("BEGIN IMMEDIATE")
+        user = conn.execute("SELECT email,email_verified FROM users WHERE issuer=? AND subject=?", (issuer, subject)).fetchone()
+        lock = " FOR UPDATE" if getattr(conn, "is_postgres", False) else ""
+        invitation = conn.execute("SELECT * FROM company_invitations WHERE id=?" + lock, (invitation_id,)).fetchone()
+        if not user or not user["email_verified"] or not invitation or invitation["email"] != user["email"]:
+            raise PermissionError("Este convite pertence a outra conta ou o e-mail não foi verificado.")
+        if not _invitation_is_current(dict(invitation)):
+            raise ValueError("Este convite expirou ou já foi respondido. Solicite um novo convite ao proprietário.")
+        if accept:
+            company = conn.execute("SELECT is_demo FROM companies WHERE id=?", (invitation["company_id"],)).fetchone()
+            if not company or company[0]:
+                raise ValueError("A empresa deste convite não está disponível.")
+            conn.execute("INSERT OR IGNORE INTO company_memberships(company_id,issuer,subject,role) VALUES (?,?,?,?)",
+                         (invitation["company_id"], issuer, subject, invitation["role"]))
+        conn.execute("UPDATE company_invitations SET status=? WHERE id=?", ("accepted" if accept else "declined", invitation_id))
+        return int(invitation["company_id"])
 
 
 def has_pending_company_invitation(email: str) -> bool:
@@ -279,7 +346,7 @@ def has_pending_company_invitation(email: str) -> bool:
         return False
     with connection() as conn:
         return conn.execute(
-            "SELECT 1 FROM company_invitations WHERE email=? LIMIT 1", (clean_email,)
+            "SELECT 1 FROM company_invitations WHERE email=? AND status='pending' LIMIT 1", (clean_email,)
         ).fetchone() is not None
 
 
@@ -297,10 +364,10 @@ def company_members(company_id: int) -> list[dict]:
 def pending_company_invitations(company_id: int) -> list[dict]:
     with connection() as conn:
         rows = conn.execute(
-            "SELECT id, email, role, created_at FROM company_invitations WHERE company_id=? ORDER BY created_at DESC",
+            "SELECT id, email, role, created_at, status, expires_at FROM company_invitations WHERE company_id=? AND status='pending' ORDER BY created_at DESC",
             (company_id,),
         ).fetchall()
-    return [dict(row) for row in rows]
+    return [dict(row) for row in rows if _invitation_is_current(dict(row))]
 
 
 def invite_company_member(company_id: int, email: str, role: str, issuer: str, subject: str) -> str:
@@ -322,18 +389,14 @@ def invite_company_member(company_id: int, email: str, role: str, issuer: str, s
             ).fetchone()
             if membership:
                 return "already_member"
-            conn.execute(
-                "INSERT INTO company_memberships(company_id, issuer, subject, role) VALUES (?, ?, ?, ?)",
-                (company_id, existing_user["issuer"], existing_user["subject"], role),
-            )
-            return "added"
         conn.execute("""INSERT INTO company_invitations
-                (company_id, email, role, invited_by_issuer, invited_by_subject)
-            VALUES (?, ?, ?, ?, ?)
+                (company_id, email, role, invited_by_issuer, invited_by_subject, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(company_id, email) DO UPDATE SET role=excluded.role,
                 invited_by_issuer=excluded.invited_by_issuer, invited_by_subject=excluded.invited_by_subject,
-                created_at=CURRENT_TIMESTAMP""",
-            (company_id, clean_email, role, issuer, subject))
+                created_at=CURRENT_TIMESTAMP, status='pending', expires_at=excluded.expires_at""",
+            (company_id, clean_email, role, issuer, subject,
+             (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()))
     return "invited"
 
 
@@ -361,7 +424,7 @@ def update_company_member_role(
                 (company_id,),
             ).fetchone()[0]
             if admins <= 1:
-                raise ValueError("A empresa precisa manter pelo menos um administrador.")
+                raise ValueError("A empresa precisa manter pelo menos um proprietário.")
         conn.execute(
             "UPDATE company_memberships SET role=? WHERE company_id=? AND issuer=? AND subject=?",
             (role, company_id, target_issuer, target_subject),
@@ -385,7 +448,7 @@ def remove_company_member(
                 (company_id,),
             ).fetchone()[0]
             if admins <= 1:
-                raise ValueError("A empresa precisa manter pelo menos um administrador.")
+                raise ValueError("A empresa precisa manter pelo menos um proprietário.")
         conn.execute(
             "DELETE FROM company_memberships WHERE company_id=? AND issuer=? AND subject=?",
             (company_id, target_issuer, target_subject),
@@ -398,33 +461,117 @@ def delete_company_invitation(company_id: int, invitation_id: int, issuer: str, 
         conn.execute("DELETE FROM company_invitations WHERE id=? AND company_id=?", (invitation_id, company_id))
 
 
-def create_company(name: str, issuer: str, subject: str) -> int:
+def create_company(name: str, issuer: str, subject: str, segment: str = "Livraria", contact_email: str = "", city: str = "") -> int:
     clean_name = name.strip()
     if not clean_name:
-        raise ValueError("Informe o nome da livraria.")
+        raise ValueError("Informe o nome da empresa.")
+    if segment not in COMPANY_SEGMENTS:
+        raise ValueError("Selecione um tipo de empresa válido.")
     with connection() as conn:
-        existing = conn.execute("SELECT company_id FROM company_memberships WHERE issuer=? AND subject=? ORDER BY company_id LIMIT 1", (issuer, subject)).fetchone()
-        if existing:
-            return int(existing[0])
-        cursor = conn.execute("INSERT INTO companies(name) VALUES (?)", (clean_name,))
+        if getattr(conn, "is_postgres", False):
+            conn.execute("SELECT pg_advisory_xact_lock(736567003)")
+        cursor = conn.execute("INSERT INTO companies(name,segment,contact_email,city) VALUES (?,?,?,?)", (clean_name, segment, contact_email.strip(), city.strip()))
         company_id = int(cursor.lastrowid)
         conn.execute("INSERT INTO company_memberships(company_id, issuer, subject, role) VALUES (?, ?, ?, 'administrator')", (company_id, issuer, subject))
         # The first company claims pre-existing local data once; later companies always start empty.
-        if conn.execute("SELECT COUNT(*) FROM companies").fetchone()[0] == 1:
+        if conn.execute("SELECT COUNT(*) FROM companies WHERE is_demo=0").fetchone()[0] == 1:
             for table in ("transactions", "budgets", "sales_lines", "inventory_snapshots", "app_settings"):
                 conn.execute(f"UPDATE {table} SET company_id=? WHERE company_id IS NULL", (company_id,))
         return company_id
 
 
-def update_company(company_id: int, name: str, issuer: str, subject: str) -> bool:
+def update_company(company_id: int, name: str, issuer: str, subject: str, segment: str = "Livraria", contact_email: str = "", city: str = "") -> bool:
     clean_name = name.strip()
     if not clean_name:
         return False
+    if segment not in COMPANY_SEGMENTS:
+        raise ValueError("Selecione um tipo de empresa válido.")
     with connection() as conn:
-        cursor = conn.execute("""UPDATE companies SET name=? WHERE id=? AND EXISTS (
+        _require_role(conn, company_id, issuer, subject, ("administrator",))
+        cursor = conn.execute("""UPDATE companies SET name=?,segment=?,contact_email=?,city=? WHERE id=? AND EXISTS (
             SELECT 1 FROM company_memberships WHERE company_id=? AND issuer=? AND subject=? AND role='administrator')""",
-            (clean_name, company_id, company_id, issuer, subject))
+            (clean_name, segment, contact_email.strip(), city.strip(), company_id, company_id, issuer, subject))
         return cursor.rowcount == 1
+
+
+def leave_company(company_id: int, issuer: str, subject: str) -> None:
+    with connection() as conn:
+        if not getattr(conn, "is_postgres", False):
+            conn.execute("BEGIN IMMEDIATE")
+        else:
+            conn.execute("SELECT id FROM companies WHERE id=? FOR UPDATE", (company_id,))
+        member = conn.execute("SELECT role FROM company_memberships WHERE company_id=? AND issuer=? AND subject=?", (company_id, issuer, subject)).fetchone()
+        if not member:
+            raise PermissionError("Você não participa desta empresa.")
+        if member[0] == "administrator" and conn.execute("SELECT COUNT(*) FROM company_memberships WHERE company_id=? AND role='administrator'", (company_id,)).fetchone()[0] <= 1:
+            raise ValueError("Defina outro proprietário antes de sair da empresa.")
+        conn.execute("DELETE FROM company_memberships WHERE company_id=? AND issuer=? AND subject=?", (company_id, issuer, subject))
+
+
+def get_user_setting(key: str, issuer: str, subject: str, default: str = "") -> str:
+    with connection() as conn:
+        row = conn.execute("SELECT setting_value FROM user_settings WHERE issuer=? AND subject=? AND setting_key=?", (issuer, subject, key)).fetchone()
+        return row[0] if row else default
+
+
+def set_user_settings(settings: dict[str, str], issuer: str, subject: str) -> None:
+    with connection() as conn:
+        conn.executemany("""INSERT INTO user_settings(issuer,subject,setting_key,setting_value) VALUES (?,?,?,?)
+            ON CONFLICT(issuer,subject,setting_key) DO UPDATE SET setting_value=excluded.setting_value""",
+            [(issuer, subject, key, str(value)) for key, value in settings.items()])
+
+
+def demo_company() -> dict:
+    """Create an isolated, read-only sample, never claiming unassigned real data."""
+    month = date.today().strftime("%Y-%m")
+    demo_key = f"financeiro-{month}-v1"
+    with connection() as conn:
+        if getattr(conn, "is_postgres", False):
+            conn.execute("SELECT pg_advisory_xact_lock(736567002)")
+        else:
+            conn.execute("BEGIN IMMEDIATE")
+        company = conn.execute("SELECT * FROM companies WHERE demo_key=?", (demo_key,)).fetchone()
+        if not company:
+            cursor = conn.execute("INSERT INTO companies(name,segment,is_demo,demo_key) VALUES (?, ?, 1, ?)",
+                                  ("Livraria Horizonte · Demo", "Livraria", demo_key))
+            cid = int(cursor.lastrowid)
+            products = [("D001", "Jardins de papel", "Literatura", 55, 28),
+                        ("D002", "Uma viagem pelo tempo", "História", 72, 38),
+                        ("D003", "Pequenos exploradores", "Infantil", 39, 18),
+                        ("D004", "Rotas do conhecimento", "Educação", 89, 45),
+                        ("D005", "Entre versos", "Poesia", 45, 22)]
+            sale_rows = []
+            total_sales = 0
+            for n in range(45):
+                sku, title, category, price, cost = products[n % len(products)]
+                quantity = 1 + n % 3
+                total_sales += quantity * price
+                sale_rows.append((cid, f"DEMO-{n+1:03}", f"{month}-{1+n%8:02}",
+                                  f"Cliente fictício {1+n%12:02}", f"DEMO-C{n%12}",
+                                  "Loja física" if n%2 else "Online", "São Paulo", "SP", sku, title,
+                                  category, quantity, price, cost))
+            conn.executemany("""INSERT INTO sales_lines(company_id,order_id,sale_date,customer,customer_id,
+                channel,city,state,sku,title,category,quantity,unit_price,unit_cost)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", sale_rows)
+            conn.executemany("""INSERT INTO inventory_snapshots(company_id,snapshot_date,sku,title,quantity,
+                unit_cost,minimum_quantity) VALUES (?,?,?,?,?,?,?)""",
+                [(cid, f"{month}-08", sku, title, 3 if n==0 else 15+n*5, cost, 5)
+                 for n, (sku,title,_,_,cost) in enumerate(products)])
+            movements = [("Receita", "Vendas de livros", "Vendas de demonstração", total_sales, "Pago", "08"),
+                         ("Despesa", "Fornecedores", "Compra de livros", 2200, "Pago", "03"),
+                         ("Despesa", "Aluguel", "Aluguel da loja", 1800, "Pago", "05"),
+                         ("Despesa", "Marketing", "Campanha de divulgação", 320, "Pago", "06"),
+                         ("Despesa", "Folha e encargos", "Folha mensal", 2400, "Pendente", "22"),
+                         ("Receita", "Eventos", "Evento literário", 650, "Pendente", "25")]
+            conn.executemany("""INSERT INTO transactions(company_id,date,kind,category,description,amount,
+                payment_method,status,due_date,notes,is_demo) VALUES (?,?,?,?,?,?,'PIX',?,?,?,1)""",
+                [(cid, f"{month}-{day if status=='Pago' else '08'}", kind, category, description, amount,
+                  status, f"{month}-{day}" if status=="Pendente" else None, "Dados fictícios")
+                 for kind,category,description,amount,status,day in movements])
+            conn.executemany("INSERT INTO budgets(company_id,month,category,amount) VALUES (?,?,?,?)",
+                             [(cid, month, "Aluguel", 1800), (cid, month, "Fornecedores", 3000), (cid, month, "Marketing", 500)])
+            company = conn.execute("SELECT * FROM companies WHERE id=?", (cid,)).fetchone()
+    return {**dict(company), "role": "demo"}
 
 
 def query_df(sql: str, params: Iterable | None = None) -> pd.DataFrame:

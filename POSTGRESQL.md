@@ -1,6 +1,6 @@
 # Persistência no PostgreSQL
 
-O suporte foi preparado. Criar o banco, configurar a conexão e validar o serviço são etapas necessárias para ativá-lo. Nenhum serviço externo foi criado ou recebeu dados nesta alteração.
+O suporte permite PostgreSQL local ou externo. Para a instalação local do Skopos, consulte [POSTGRESQL_LOCAL.md](POSTGRESQL_LOCAL.md), com inicialização, migração, testes e backups. As instruções abaixo são para serviços externos; nenhum serviço de nuvem é criado pelo aplicativo.
 
 1. Crie um banco PostgreSQL em um serviço de sua escolha. Use a conexão fornecida pelo serviço, preferencialmente com TLS (`sslmode=require`), e um usuário com permissão para criar e alterar as tabelas do app. Mantenha a URL privada.
 2. Instale as dependências locais: `pip install -r requirements.txt`.
@@ -17,7 +17,7 @@ O suporte foi preparado. Criar o banco, configurar a conexão e validar o servi�
 .\.venv\Scripts\python.exe migrate_postgres.py --source .\livraria.db --apply
 ```
 
-O migrador lê o SQLite em modo somente leitura, cria uma cópia temporária, atualiza essa cópia para o esquema atual e preserva IDs. A inserção ocorre em uma transação, com bloqueio das tabelas e conferência das contagens; falhas revertem as inserções. Tabelas vazias podem ser criadas no destino durante a preparação. Um destino com dados é recusado. Faça a migração antes de abrir o app nesse destino; mantenha o arquivo SQLite original como backup.
+O migrador lê o SQLite em modo somente leitura, cria uma cópia temporária, atualiza essa cópia para o esquema atual e preserva IDs. A inserção ocorre em uma transação, com bloqueio das tabelas e conferência dos registros e contagens; falhas revertem as inserções. Tabelas vazias podem ser criadas no destino durante a preparação. Um destino com dados é recusado. Faça a migração antes de abrir o app nesse destino; mantenha o arquivo SQLite original como backup.
 
 6. No Streamlit Cloud, em Settings → Secrets, acrescente ao bloco de autenticação já configurado:
 

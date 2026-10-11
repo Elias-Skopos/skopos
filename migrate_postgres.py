@@ -7,12 +7,13 @@ import os
 from pathlib import Path
 import sqlite3
 import tempfile
+from collections import Counter
 from contextlib import closing
 from unittest.mock import patch
 
 import db
 
-TABLES = ("companies", "users", "company_memberships", "company_invitations", "transactions", "budgets", "sales_lines", "inventory_snapshots", "app_settings", "import_batches")
+TABLES = ("companies", "users", "company_memberships", "company_invitations", "transactions", "budgets", "sales_lines", "inventory_snapshots", "app_settings", "import_batches", "user_settings")
 IDENTITY_TABLES = ("companies", "company_invitations", "transactions", "budgets", "sales_lines", "inventory_snapshots")
 
 
@@ -47,7 +48,11 @@ def migrate(source: Path, apply: bool = False):
                     columns = list(frame.columns)
                     query = f"INSERT INTO {table} ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})"
                     values = frame.astype(object).where(frame.notna(), None).to_dict("records")
-                    target.executemany(query, [tuple(row[column] for column in columns) for row in values])
+                    expected_rows = [tuple(row[column] for column in columns) for row in values]
+                    target.executemany(query, expected_rows)
+                    actual_rows = target.execute(f"SELECT {','.join(columns)} FROM {table}").fetchall()
+                    if Counter(expected_rows) != Counter(tuple(row[column] for column in columns) for row in actual_rows):
+                        raise ValueError(f"Registros divergentes em {table}; a transação será revertida.")
                 for table in IDENTITY_TABLES:
                     target.execute(f"SELECT setval(pg_get_serial_sequence('{table}','id'), COALESCE((SELECT MAX(id) FROM {table}),1), EXISTS(SELECT 1 FROM {table}))")
                 for table, expected in counts.items():
