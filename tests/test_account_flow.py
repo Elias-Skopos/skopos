@@ -1,4 +1,4 @@
-"""Company onboarding, batch invitations, permissions and legacy data isolation."""
+"""Company onboarding, explicit invitations, permissions and demo isolation."""
 from datetime import datetime, timedelta, timezone
 from contextlib import closing
 from pathlib import Path
@@ -50,19 +50,6 @@ class AccountFixture(unittest.TestCase):
 
 
 class AccountDatabaseTests(AccountFixture):
-    def test_batch_invites_validate_every_address_before_writing(self):
-        with self.assertRaises(ValueError):
-            db.invite_company_members(self.company, [("viewer@example.invalid", "collaborator"),
-                                                       ("email incorreto", "administrator")], "test", "owner")
-        self.assertFalse(db.pending_company_invitations(self.company))
-        with self.assertRaises(ValueError):
-            db.invite_company_members(self.company, [("viewer@example.invalid", "collaborator"),
-                                                       (" VIEWER@example.invalid ", "administrator")], "test", "owner")
-        self.assertFalse(db.pending_company_invitations(self.company))
-        with self.assertRaises(PermissionError):
-            db.invite_company_members(self.company, [("other@example.invalid", "collaborator")], "test", "viewer")
-        self.assertFalse(db.pending_company_invitations(self.company))
-
     def test_member_can_create_another_company_and_roles_are_company_scoped(self):
         db.invite_company_member(self.company, "viewer@example.invalid", "collaborator", "test", "owner")
         invite = db.invitations_for_user("test", "viewer")[0]
@@ -203,37 +190,21 @@ class AccountAppTests(AccountFixture):
         self.assertFalse(at.exception)
         self.assertNotIn("horus_password", at.session_state)
         self.assertNotIn("gemini_session_key_1", at.session_state)
-        self.assertTrue(any(x.key == "onboarding_name" for x in at.text_input))
-        self.assertFalse(any(x.key == "enter_demo" for x in at.button))
+        self.assertTrue(any(x.key == "enter_demo" for x in at.button))
 
     def test_creation_with_invitation_and_split_account_menus(self):
         at = self.app()
         at.text_input(key="onboarding_name").set_value("Empresa com equipe")
+        at.text_input(key="onboarding_invite").set_value("viewer@example.invalid")
         next(x for x in at.button if x.label == "Criar empresa").click().run()
         self.assertFalse(at.exception)
         self.assertEqual(at.session_state["active_page"], "Empresa")
         cid = at.session_state["active_company_id"]
-        prefix = f"team_invite_{cid}"
-        at.text_input(key=f"{prefix}_email_0").set_value("viewer@example.invalid")
-        at.button(key=f"{prefix}_add_row").click().run()
-        self.assertFalse(at.exception)
-        self.assertEqual(at.text_input(key=f"{prefix}_email_0").value, "viewer@example.invalid")
-        self.assertFalse(db.pending_company_invitations(cid))
-        at.text_input(key=f"{prefix}_email_1").set_value("another@example.invalid")
-        at.selectbox(key=f"{prefix}_role_1").select("administrator")
-        at.button(key=f"{prefix}_submit").click().run()
-        self.assertFalse(at.exception)
         self.assertEqual(len(db.company_members(cid)), 1)
         self.assertEqual(db.invitations_for_user("test", "viewer")[0]["company_id"], cid)
-        invites = {item["email"]: item["role"] for item in db.pending_company_invitations(cid)}
-        self.assertEqual(invites, {"viewer@example.invalid": "collaborator", "another@example.invalid": "administrator"})
-        self.assertEqual(at.text_input(key=f"{prefix}_email_0").value, "")
         self.assertTrue(any("não está configurado" in x.value for x in at.info))
         self.assertIn("account_profile", {x.key for x in at.button})
         self.assertIn("account_company", {x.key for x in at.button})
-        keys = [x.key for x in at.button]
-        self.assertLess(keys.index("account_company"), keys.index("account_profile"))
-        self.assertEqual(keys.index("nav_Meu perfil"), keys.index("nav_Empresa") + 1)
         at.button(key="account_profile").click().run()
         self.assertFalse(at.exception)
         self.assertEqual(at.session_state["active_page"], "Meu perfil")
@@ -247,11 +218,7 @@ class AccountAppTests(AccountFixture):
         next(x for x in at.button if x.label == "Criar empresa").click().run()
         self.assertFalse(at.exception)
         self.assertEqual(len(db.companies_for_user("test", "owner")), 2)
-        at.button(key="top_home_button").click().run()
-        self.assertFalse(at.exception)
-        company = next(item for item in db.companies_for_user("test", "owner")
-                       if item["id"] == at.session_state["active_company_id"])
-        self.assertEqual(company["segment"], "Padaria")
+        self.assertTrue(any("padaria" in x.value for x in at.markdown))
 
     def test_invited_user_accepts_and_sees_read_only_navigation(self):
         db.invite_company_member(self.company, "viewer@example.invalid", "collaborator", "test", "owner")
@@ -272,43 +239,26 @@ class AccountAppTests(AccountFixture):
         next(x for x in at.button if x.label == "Sair da empresa").click().run()
         self.assertFalse(at.exception)
         self.assertFalse(db.companies_for_user("test", "viewer"))
-        self.assertTrue(any(x.key == "onboarding_name" for x in at.text_input))
+        self.assertTrue(any(x.key == "enter_demo" for x in at.button))
 
-    def test_demo_is_unavailable_even_with_an_old_active_session(self):
-        demo = db.demo_company()
+    def test_demo_and_return_to_picker(self):
         at = self.app()
-        self.assertFalse(any("demo" in x.label.casefold() for x in at.button))
-        at.session_state["active_company_id"] = demo["id"]
-        at.session_state["demo_active"] = True
-        at.session_state["workspace_picker"] = False
-        at.run()
+        at.button(key="enter_demo").click().run()
         self.assertFalse(at.exception)
-        self.assertNotIn("active_company_id", at.session_state)
-        self.assertNotIn("demo_active", at.session_state)
-        self.assertFalse(any("demo" in x.label.casefold() for x in at.button))
+        self.assertTrue(at.session_state["demo_active"])
+        self.assertTrue(any("dados fictícios" in x.value for x in at.info))
+        self.assertNotIn("nav_Empresa", {x.key for x in at.button})
+        at.button(key="nav_Vendas e estoque").click().run()
+        self.assertFalse(at.exception)
+        self.assertFalse(at.file_uploader)
+        at.button(key="nav_Orçamento").click().run()
+        self.assertFalse(at.exception)
+        self.assertTrue(at.dataframe)
+        at.button(key="account_workspaces").click().run()
         at.button(key=f"enter_company_{self.company}").click().run()
         self.assertFalse(at.exception)
+        self.assertFalse(at.session_state["demo_active"])
         self.assertEqual(at.session_state["active_company_id"], self.company)
-
-    def test_batch_validation_preserves_fields_and_sends_nothing(self):
-        at = self.app(active=self.company, page="Empresa")
-        prefix = f"team_invite_{self.company}"
-        at.text_input(key=f"{prefix}_email_0").set_value("viewer@example.invalid")
-        at.button(key=f"{prefix}_add_row").click().run()
-        at.text_input(key=f"{prefix}_email_1").set_value("email incorreto")
-        with patch("account_ui.send_invitation") as send:
-            at.button(key=f"{prefix}_submit").click().run()
-            send.assert_not_called()
-        self.assertFalse(at.exception)
-        self.assertTrue(at.error)
-        self.assertFalse(db.pending_company_invitations(self.company))
-        self.assertEqual(at.text_input(key=f"{prefix}_email_0").value, "viewer@example.invalid")
-        self.assertEqual(at.text_input(key=f"{prefix}_email_1").value, "email incorreto")
-        at.text_input(key=f"{prefix}_email_1").set_value(" VIEWER@example.invalid ")
-        at.button(key=f"{prefix}_submit").click().run()
-        self.assertFalse(at.exception)
-        self.assertTrue(any("repetido" in x.value for x in at.error))
-        self.assertFalse(db.pending_company_invitations(self.company))
 
 
 class InvitationDeliveryTests(unittest.TestCase):
