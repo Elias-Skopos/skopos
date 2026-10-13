@@ -24,14 +24,15 @@ from uuid import uuid4
 
 import psycopg
 from psycopg import sql
+from local_paths import APP_ROOT, DATA_ROOT, postgres_runtime
 
-ROOT = Path(__file__).resolve().parent
-LOCAL = ROOT / ".local_postgres"
-BIN = LOCAL / "runtime" / "pgsql" / "bin"
+ROOT = APP_ROOT
+LOCAL = DATA_ROOT / ".local_postgres"
+BIN = postgres_runtime() / "bin"
 DATA = LOCAL / "data"
 SETTINGS = LOCAL / "settings.json"
-BACKUPS = ROOT / "backup_local_postgres"
-SECRETS = ROOT / ".streamlit" / "secrets.toml"
+BACKUPS = DATA_ROOT / "backup_local_postgres"
+SECRETS = DATA_ROOT / ".streamlit" / "secrets.toml"
 
 
 def run_binary(name: str, args: list[str], env: dict | None = None, timeout: int = 60) -> subprocess.CompletedProcess:
@@ -43,7 +44,9 @@ def run_binary(name: str, args: list[str], env: dict | None = None, timeout: int
     log_path = LOCAL / f"{name}-command.log"
     with log_path.open("ab") as log:
         offset = log.tell()
-        result = subprocess.run([str(executable), *args], env=env, stdout=log, stderr=subprocess.STDOUT,
+        runtime_env = {**os.environ, **(env or {})}
+        runtime_env["PATH"] = str(APP_ROOT) + os.pathsep + str(BIN) + os.pathsep + runtime_env.get("PATH", "")
+        result = subprocess.run([str(executable), *args], env=runtime_env, cwd=APP_ROOT, stdout=log, stderr=subprocess.STDOUT,
                                 stdin=subprocess.DEVNULL,
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                                 timeout=timeout)
@@ -145,7 +148,7 @@ def migrate_local(source: Path) -> dict:
     if not source.is_file():
         raise ValueError("O banco SQLite de origem não existe.")
     backup = snapshot_sqlite(source)
-    print(f"Backup SQLite: {backup.relative_to(ROOT)}")
+    print(f"Backup SQLite: {backup.relative_to(DATA_ROOT)}")
     with patch.dict(os.environ, {"SKOPOS_DATABASE_URL": database_url(read_settings())}):
         counts = migrate(backup, apply=True)
     (LOCAL / "migration.json").write_text(json.dumps({"sqlite_backup": str(backup), "counts": counts,
@@ -268,7 +271,13 @@ def verify_backup(destination: Path | None = None) -> dict:
         with psycopg.connect(database_url(settings), connect_timeout=10) as live:
             with psycopg.connect(restored_url, connect_timeout=10) as restored:
                 counts = {}
+                available = {row[0] for row in live.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")}
+                recovered_tables = {row[0] for row in restored.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")}
+                if available != recovered_tables:
+                    raise ValueError("O backup e o banco ativo têm estruturas diferentes. Gere um backup atualizado antes de validar.")
                 for table in TABLES:
+                    if table not in available:
+                        continue
                     query = sql.SQL("SELECT * FROM {} ORDER BY {}::text COLLATE \"C\"").format(sql.Identifier(table), sql.Identifier(table))
                     # The row text ordering is deterministic across both databases.
                     current = live.execute(query).fetchall()
@@ -290,7 +299,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("setup", "start", "stop", "status", "migrate", "activate", "backup", "verify-backup", "test"))
     parser.add_argument("--port", type=int, default=5432)
-    parser.add_argument("--source", type=Path, default=ROOT / "livraria.db")
+    parser.add_argument("--source", type=Path, default=DATA_ROOT / "livraria.db")
     parser.add_argument("--backup", type=Path)
     args = parser.parse_args()
     try:
@@ -316,7 +325,7 @@ def main() -> int:
         elif args.action == "activate":
             activate()
         elif args.action == "backup":
-            print(f"Backup PostgreSQL: {backup().relative_to(ROOT)}")
+            print(f"Backup PostgreSQL: {backup().relative_to(DATA_ROOT)}")
         elif args.action == "verify-backup":
             for table, count in verify_backup(args.backup).items():
                 print(f"{table}: {count}")

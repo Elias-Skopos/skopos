@@ -1,0 +1,178 @@
+"""Individual local credentials and short-lived OIDC state, stored in PostgreSQL."""
+import hashlib
+import json
+import time
+from uuid import uuid4
+
+from argon2 import PasswordHasher
+from argon2.exceptions import VerificationError
+
+import db
+
+PASSWORDS = PasswordHasher()
+# Use the same expensive verification for missing usernames.
+DUMMY_HASH = PASSWORDS.hash("not-a-user-password-" + uuid4().hex)
+
+
+def digest(value):
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def init_schema(conn):
+    conn.execute("""CREATE TABLE IF NOT EXISTS identity_credentials (
+        login TEXT PRIMARY KEY, issuer TEXT NOT NULL, subject TEXT NOT NULL,
+        password_hash TEXT NOT NULL, failed_attempts INTEGER NOT NULL DEFAULT 0,
+        locked_until INTEGER NOT NULL DEFAULT 0, UNIQUE(issuer,subject))""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS identity_codes (
+        code_hash TEXT PRIMARY KEY, payload TEXT NOT NULL, nonce TEXT NOT NULL,
+        expires_at INTEGER NOT NULL, consumed INTEGER NOT NULL DEFAULT 0)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS identity_flows (
+        flow_hash TEXT PRIMARY KEY, payload TEXT NOT NULL, expires_at INTEGER NOT NULL,
+        consumed INTEGER NOT NULL DEFAULT 0)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS identity_google_links (
+        google_subject TEXT PRIMARY KEY, issuer TEXT NOT NULL, subject TEXT NOT NULL,
+        UNIQUE(issuer,subject))""")
+
+
+def create_local_user(email, name, password, installation_id):
+    email = email.strip().casefold()
+    if not db.re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email) or len(email) > 254:
+        raise ValueError("Informe um e-mail válido.")
+    if not name.strip() or len(name.strip()) > 120 or not 12 <= len(password) <= 256:
+        raise ValueError("Informe seu nome e uma senha com 12 a 256 caracteres.")
+    password_hash = PASSWORDS.hash(password)
+    with db.connection() as conn:
+        if conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
+            raise ValueError("Esse e-mail já tem um perfil. Entre por ele antes de cadastrar uma senha local.")
+        issuer, subject = f"urn:skopos:local:{installation_id}", uuid4().hex
+        conn.execute("INSERT INTO users(issuer,subject,email,name,email_verified) VALUES (?,?,?,?,0)", (issuer, subject, email, name.strip()))
+        conn.execute("INSERT INTO identity_credentials(login,issuer,subject,password_hash) VALUES (?,?,?,?)", (email, issuer, subject, password_hash))
+    return {"issuer": issuer, "subject": subject}
+
+
+def authenticate(email, password):
+    email = email.strip().casefold()
+    now = int(time.time())
+    if len(email) > 254 or len(password) > 256:
+        return None
+    with db.connection() as conn:
+        suffix = " FOR UPDATE" if getattr(conn, "is_postgres", False) else ""
+        if not suffix:
+            conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT * FROM identity_credentials WHERE login=?" + suffix, (email,)).fetchone()
+        if row and row["locked_until"] > now:
+            return None
+        try:
+            valid = PASSWORDS.verify(row["password_hash"] if row else DUMMY_HASH, password)
+        except VerificationError:
+            valid = False
+        if not row:
+            return None
+        if not valid:
+            attempts = row["failed_attempts"] + 1
+            conn.execute("UPDATE identity_credentials SET failed_attempts=?,locked_until=? WHERE login=?",
+                         (attempts, now+600 if attempts >= 5 else 0, email))
+            return None
+        conn.execute("UPDATE identity_credentials SET failed_attempts=0,locked_until=0 WHERE login=?", (email,))
+        return {"issuer": row["issuer"], "subject": row["subject"]}
+
+
+def user_info(identity):
+    with db.connection() as conn:
+        row = conn.execute("SELECT * FROM users WHERE issuer=? AND subject=?", (identity["issuer"], identity["subject"])).fetchone()
+    if not row:
+        raise ValueError("O perfil não está disponível.")
+    return {"sub": digest(row["issuer"] + "\0" + row["subject"]), "name": row["name"], "email": row["email"],
+            "email_verified": bool(row["email_verified"]), "skopos_issuer": row["issuer"], "skopos_subject": row["subject"]}
+
+
+def set_password(identity, password, current_password=None, google_confirmed=False):
+    if not 12 <= len(password) <= 256:
+        raise ValueError("Use uma senha com 12 a 256 caracteres.")
+    info = user_info(identity)
+    if not google_confirmed:
+        authenticated = authenticate(info["email"], current_password or "")
+        if authenticated != identity:
+            raise ValueError("Confirme a senha atual ou entre novamente pelo Google.")
+    hashed = PASSWORDS.hash(password)
+    with db.connection() as conn:
+        other = conn.execute("SELECT issuer,subject FROM identity_credentials WHERE login=?", (info["email"],)).fetchone()
+        if other and (other[0], other[1]) != (identity["issuer"], identity["subject"]):
+            raise ValueError("Este e-mail pertence a outro perfil local.")
+        conn.execute("""INSERT INTO identity_credentials(login,issuer,subject,password_hash) VALUES (?,?,?,?)
+            ON CONFLICT(login) DO UPDATE SET password_hash=excluded.password_hash,failed_attempts=0,locked_until=0""",
+            (info["email"], identity["issuer"], identity["subject"], hashed))
+
+
+def save_state(table, token, payload, ttl=300, nonce=""):
+    if table not in ("identity_codes", "identity_flows"):
+        raise ValueError("Invalid state store")
+    now = int(time.time())
+    with db.connection() as conn:
+        conn.execute(f"DELETE FROM {table} WHERE expires_at<?", (now,))
+        if table == "identity_codes":
+            conn.execute("INSERT INTO identity_codes(code_hash,payload,nonce,expires_at) VALUES (?,?,?,?)",
+                         (digest(token), json.dumps(payload), nonce, now+ttl))
+        else:
+            conn.execute("INSERT INTO identity_flows(flow_hash,payload,expires_at) VALUES (?,?,?)",
+                         (digest(token), json.dumps(payload), now+ttl))
+
+
+def consume_state(table, token):
+    if table not in ("identity_codes", "identity_flows"):
+        raise ValueError("Invalid state store")
+    key = "code_hash" if table == "identity_codes" else "flow_hash"
+    with db.connection() as conn:
+        suffix = " FOR UPDATE" if getattr(conn, "is_postgres", False) else ""
+        if not suffix:
+            conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(f"SELECT * FROM {table} WHERE {key}=?"+suffix, (digest(token),)).fetchone()
+        if not row or row["consumed"] or row["expires_at"] < int(time.time()):
+            return None
+        conn.execute(f"UPDATE {table} SET consumed=1 WHERE {key}=?", (digest(token),))
+        return json.loads(row["payload"])
+
+
+def google_identity(claims, target=None):
+    if claims.get("iss") not in ("https://accounts.google.com", "accounts.google.com") or claims.get("email_verified") is not True:
+        raise ValueError("O Google precisa confirmar esta identidade e o e-mail.")
+    google_sub = claims["sub"]
+    with db.connection() as conn:
+        linked = conn.execute("SELECT issuer,subject FROM identity_google_links WHERE google_subject=?", (google_sub,)).fetchone()
+        if linked:
+            identity = {"issuer": linked[0], "subject": linked[1]}
+        else:
+            previous = conn.execute("SELECT issuer,subject FROM users WHERE subject=? AND issuer IN (?,?)",
+                                    (google_sub, "https://accounts.google.com", "accounts.google.com")).fetchall()
+            if len(previous) > 1:
+                raise ValueError("Há mais de um perfil para este Google. Confira os vínculos antes de continuar.")
+            identity = {"issuer": previous[0][0], "subject": previous[0][1]} if previous else {"issuer": "https://accounts.google.com", "subject": google_sub}
+        if target:
+            info = user_info(target)
+            if info["email"].casefold() != claims["email"].casefold():
+                raise ValueError("Use o Google com o mesmo e-mail do seu perfil local.")
+            if linked and identity != target:
+                raise ValueError("Este Google já está vinculado a outro perfil.")
+            existing = conn.execute("SELECT 1 FROM users WHERE issuer=? AND subject=?", (identity["issuer"], identity["subject"])).fetchone()
+            if not linked and existing and identity != target:
+                raise ValueError("Esse Google já tem um perfil. Entre por ele e cadastre a senha local, preservando seus dados.")
+            identity = target
+        conn.execute("""INSERT INTO identity_google_links(google_subject,issuer,subject) VALUES (?,?,?)
+            ON CONFLICT(google_subject) DO NOTHING""", (google_sub, identity["issuer"], identity["subject"]))
+        linked = conn.execute("SELECT issuer,subject FROM identity_google_links WHERE google_subject=?", (google_sub,)).fetchone()
+        if (linked[0], linked[1]) != (identity["issuer"], identity["subject"]):
+            raise ValueError("Este Google já foi vinculado a outro perfil. Nenhum acesso foi alterado.")
+        login = claims["email"].strip().casefold()
+        credential = conn.execute("SELECT login FROM identity_credentials WHERE issuer=? AND subject=?",
+                                  (identity["issuer"], identity["subject"])).fetchone()
+        if credential and credential[0] != login:
+            taken = conn.execute("SELECT 1 FROM identity_credentials WHERE login=?", (login,)).fetchone()
+            if taken:
+                raise ValueError("O novo e-mail já pertence a outro perfil local. Nenhum vínculo foi alterado.")
+            conn.execute("UPDATE identity_credentials SET login=? WHERE issuer=? AND subject=?",
+                         (login, identity["issuer"], identity["subject"]))
+        conn.execute("""INSERT INTO users(issuer,subject,email,name,email_verified) VALUES (?,?,?,?,1)
+            ON CONFLICT(issuer,subject) DO UPDATE SET email=excluded.email,name=excluded.name,
+            email_verified=1,last_seen_at=CURRENT_TIMESTAMP""",
+            (identity["issuer"], identity["subject"], claims["email"].strip().casefold(), claims.get("name", "")))
+    return identity

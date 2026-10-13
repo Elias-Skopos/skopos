@@ -4,7 +4,15 @@ Aplicativo em Python, Streamlit, SQLite local e PostgreSQL externo para acompanh
 
 Endereço publicado: [skopos.streamlit.app](https://skopos.streamlit.app/).
 
-Documentação atualizada em 09/10/2026. As mudanças locais precisam ser enviadas ao GitHub para chegar à versão publicada.
+Documentação atualizada em 12/10/2026. As mudanças locais precisam ser enviadas ao GitHub para chegar à versão publicada.
+
+## Instalador Windows e site público
+
+O candidato **0.1.4** foi compilado com o novo cliente Google e JSON incluído automaticamente, além do atalho que inicia a aplicação web local no navegador padrão. Consulte [ATUALIZACAO_0_1_4.md](ATUALIZACAO_0_1_4.md). A validação dessa atualização está pendente; os resultados da versão 0.1.3 abaixo são históricos.
+
+O piloto **0.1.3** foi compilado com Python e PostgreSQL no pacote, instalação por usuário e atalhos locais. O site público oferece download e demonstração com números fictícios, sem conta, usando o visual do login atual. A publicação será manual; o download está desativado até a Release existir. Consulte [PUBLICACAO_WINDOWS.md](PUBLICACAO_WINDOWS.md) para os arquivos, checksum, publicação, primeiro uso e limites dos testes.
+
+Na edição instalada, cada perfil pode usar senha local e vincular Google à mesma identidade. Dados ficam em `%LOCALAPPDATA%\Skopos\Data`; o nome local é definido na primeira abertura. A instalação começa vazia e não transfere automaticamente os dados desta pasta ou do Cloud. O executável 0.1.3 passou no teste de preparação de PostgreSQL em pasta nova; ainda falta a validação completa em um Windows limpo e o login Google real.
 
 ## O que o painel mostra
 
@@ -17,8 +25,8 @@ Documentação atualizada em 09/10/2026. As mudanças locais precisam ser enviad
 
 ## Navegação e personalização
 
-- **Home:** saudação, capa da empresa, filtro de período, atalhos configuráveis e resumo financeiro.
-- **Acompanhamento:** Visão geral, Curva ABC, Relatórios, Fluxo de caixa, Contas e Insights com IA.
+- **Home:** saudação, capa da empresa, filtro de período e três blocos principais: ponto de equilíbrio mensal estimado, checklist dos próximos três pagamentos e entradas/saídas realizadas. Favoritos ficam abaixo desse resumo.
+- **Acompanhamento:** Visão geral, Relatórios, Fluxo de caixa, Contas, Curva ABC e Insights com IA.
 - **Alimentar e planejar:** Vendas e estoque, Lançamentos e Orçamento, disponíveis para administrador e gestor.
 - **Gestão da Plataforma:** API do Horus, Configuração de IA e Conta, disponíveis para administrador.
 - **Conta → Equipe:** inclusão de pessoas, convites pendentes, alteração de perfil e remoção de acesso. A gestão da equipe fica dentro de Conta em Gestão da Plataforma.
@@ -41,11 +49,25 @@ Execute os comandos dentro da pasta `skopos`:
 
 O banco `livraria.db` é criado automaticamente. As pastas `backup_*` são cópias locais e não fazem parte da publicação.
 
-### Atalho do Windows
+### Iniciador local do Windows
 
-No botão **Atalho desktop**, ao lado de Conta na barra superior, qualquer usuário pode baixar `Skopos-Atalho.zip`. Extraia o ZIP e execute `Criar atalho.vbs`: ele cria `Skopos Online` na área de trabalho e guarda o ícone em `%LOCALAPPDATA%\Skopos`. O atalho abre `https://skopos.streamlit.app/` no navegador, com acesso pela internet e login Google. Ele não inicia o servidor local. O arquivo `Skopos.url` da raiz é uma alternativa simples para abrir o mesmo endereço.
+O botão **Atalho desktop** foi retirado. O instalador cria os atalhos que iniciam o aplicativo local. Atalhos antigos chamados `Skopos Online` e o arquivo `Skopos.url` continuam apontando para o site hospedado; eles não iniciam o aplicativo neste computador.
 
 Para executar a versão local com PostgreSQL, use **Iniciar Skopos local.cmd**: ele inicia o banco, faz um backup e abre o aplicativo. As instruções de manutenção estão em [POSTGRESQL_LOCAL.md](POSTGRESQL_LOCAL.md). Sem PostgreSQL configurado, também é possível executar `.\.venv\Scripts\python.exe -m streamlit run app.py` com SQLite. Fechar a guia do navegador não encerra o servidor local; encerre-o no terminal que o iniciou.
+
+O planejamento da versão instalável está em [BACKLOG_INSTALAVEL.md](BACKLOG_INSTALAVEL.md), com etapas, decisões pendentes e critérios de conclusão.
+
+Os caminhos persistentes são centralizados em `local_paths.py`. Sem configuração adicional, este projeto continua usando suas pastas atuais. A edição instalada fornece `SKOPOS_DATA_DIR` (pasta absoluta dos dados, Secrets e backups) e `SKOPOS_POSTGRES_RUNTIME` (binários `pgsql`, contendo `bin/`, `lib/` e `share/`), prepara permissões e carrega os Secrets da pasta de dados. Essas opções não copiam nem migram um banco existente.
+
+`local_launcher.py` prepara o banco, valida a configuração e abre o navegador após a prontidão do servidor. Na edição instalada, o nome configurável segue `skopos.nome-da-empresa.localhost:8501`, com acesso somente neste computador e autenticação local OIDC. O iniciador de desenvolvimento continua usando o Google web e exige a origem configurada nos Secrets. Consulte [POSTGRESQL_LOCAL.md](POSTGRESQL_LOCAL.md) para manutenção dessa instalação de desenvolvimento.
+
+### Os três blocos financeiros da Home
+
+Em **Ponto de equilíbrio → Configurar ponto de equilíbrio**, o proprietário informa custos fixos mensais e margem de contribuição estimada. Use os valores completos da empresa e considere CMV, descontos, impostos, taxas de cartão e outros custos variáveis na margem, evitando duplicação. As premissas são compartilhadas dentro da empresa e a fórmula usa cálculo decimal: custos fixos / (margem / 100). Margem zero ou negativa aparece como sem equilíbrio. Não são cadastradas despesas nem recebimentos ao salvar essas premissas. O valor é uma estimativa mensal, independente do filtro, e não inclui parcelas do principal de dívidas nem reservas.
+
+**Próximos compromissos** mostra até três despesas pendentes com vencimento, ordenadas pela data, incluindo atrasadas primeiro. Essa agenda não depende do filtro de período. O proprietário pode marcar o que já pagou, informar a data efetiva e usar **Confirmar pagamentos**. A baixa é transacional, verifica a permissão atual e atualiza Contas e entradas/saídas. Colaboradores apenas consultam. Pendências sem vencimento aparecem em um aviso para revisão em Contas.
+
+**Entradas e saídas** soma somente receitas recebidas e despesas pagas no período selecionado, pela data efetiva; registros antigos sem essa data usam a original. Vendas ainda não recebidas e contas pendentes não são somadas. A opção de ocultar valores também protege os três blocos; mostre os valores para editar as premissas.
 
 ## Login com Google
 
@@ -64,19 +86,29 @@ O arquivo `.streamlit/secrets.toml` está ignorado pelo Git e não deve ser comp
 | Proprietário | Opera os dados, gerencia equipe e perfil da empresa e configura Horus e IA. |
 | Colaborador | Consulta dados, gerencia suas preferências e pode sair da empresa, sem editar dados da empresa. |
 
-Após o login, a tela de entrada apresenta empresas vinculadas, convites pendentes, criação de empresa e Demo. Quem cria uma empresa recebe o perfil Proprietário, mesmo se já for colaborador de outra. O segmento, nome, cidade e e-mail de contato são configurados no cadastro e em **Empresa → Perfil da empresa**. Empresas existentes recebem o segmento Livraria durante a atualização.
+Após o login, a tela de entrada apresenta empresas vinculadas, convites pendentes e criação de empresa. Quem cria uma empresa recebe o perfil Proprietário, mesmo se já for colaborador de outra. O segmento, nome, cidade e e-mail de contato são configurados no cadastro e em **Empresa → Perfil da empresa**. Empresas existentes recebem o segmento Livraria durante a atualização. Ao criar uma empresa, a página **Empresa** abre com **Equipe e convites** expandido para convidar pessoas; essa etapa é opcional.
 
 O menu **Conta** oferece **Empresa** (somente proprietários), **Meu perfil** e **Empresas e convites**. A gestão da equipe, capa e integrações pertence à empresa. Nome de exibição, tema e favoritos são pessoais; favoritos antigos da empresa servem como padrão até a pessoa salvar sua escolha.
 
-Em **Empresa → Equipe e convites**, o proprietário registra convites pelo e-mail da conta Google. Nenhum acesso é concedido automaticamente, mesmo a usuários já cadastrados: a pessoa deve aceitar ou recusar após login com e-mail verificado. Convites valem por sete dias, podem ser cancelados e podem ser registrados novamente. A empresa precisa manter pelo menos um proprietário; sair da empresa preserva seus dados e a identidade do usuário.
+Em **Empresa → Equipe e convites**, o proprietário registra convites pelo e-mail da conta Google. O botão **+** adiciona outro campo de e-mail, preservando os já preenchidos. Cada pessoa pode ter seu próprio perfil de acesso. **Adicionar à empresa** registra todos os convites de uma vez; e-mails inválidos ou repetidos impedem o lote inteiro de ser gravado. Linhas extras vazias são ignoradas. Nenhum acesso é concedido automaticamente, mesmo a usuários já cadastrados: a pessoa deve aceitar ou recusar após login com e-mail verificado. Convites valem por sete dias, podem ser cancelados e podem ser registrados novamente. A empresa precisa manter pelo menos um proprietário; sair da empresa preserva seus dados e a identidade do usuário.
 
 O envio de e-mail é opcional: configure `[email]` conforme `.streamlit/secrets.toml.example` com SMTP autenticado e TLS (587/STARTTLS ou 465/TLS) e o endereço da aplicação. Sem configuração, o convite fica disponível na entrada; compartilhe o endereço com o convidado. Falha no envio não apaga o convite nem concede acesso.
 
-O **Demo** contém vendas, estoque, lançamentos e orçamento fictícios do mês atual, em empresa isolada e somente para consulta. Não carrega dados nas empresas reais nem usa credenciais compartilhadas. Na atualização de um SQLite existente, é criado um backup em `backup_account_upgrade/` antes de alterar a estrutura. Administradores existentes permanecem proprietários (código interno `administrator`); gestores antigos passam a colaboradores. Revise esses vínculos na gestão da equipe se precisar conceder propriedade.
+A opção de empresa Demo foi retirada da edição protegida. A nova demonstração anônima fica na página pública e usa somente dados fictícios em memória. Empresas de demonstração antigas continuam isoladas e não aparecem na seleção de empresas. Na atualização de um SQLite existente, é criado um backup em `backup_account_upgrade/` antes de alterar a estrutura. Administradores existentes permanecem proprietários (código interno `administrator`); gestores antigos passam a colaboradores. Revise esses vínculos na gestão da equipe se precisar conceder propriedade.
 
 Usuários vinculados a mais de uma empresa podem alternar pelo menu Conta da barra superior. Os perfis valem dentro de cada empresa e não concedem acesso global.
 
+### Excluir e recuperar uma empresa
+
+Em **Empresa → Excluir empresa**, somente um proprietário pode excluir a empresa. É necessário digitar o nome exato e marcar a confirmação; o servidor verifica novamente a propriedade no momento da operação. A exclusão remove a empresa da seleção, revoga os acessos e convites e retira seus lançamentos, vendas, estoque, importações, orçamento, recorrências, saldo inicial e configurações da área ativa. Perfis pessoais e outras empresas permanecem.
+
+Antes da remoção, é guardada uma cópia dos dados e vínculos em `company_deletion_backups`, no mesmo banco e na mesma transação. Se a cópia ou a exclusão falhar, nenhuma remoção é confirmada. Na tela **Empresas e convites → Empresas excluídas**, somente o proprietário que realizou a exclusão pode recuperar a empresa, confirmando a restauração dos dados e acessos da equipe. A recuperação preserva os identificadores e recusa substituir registros existentes. Uma exclusão de empresa não elimina essa cópia de recuperação; não há expurgo definitivo nesta etapa.
+
+Essa cópia também entra na migração e nos backups PostgreSQL do Skopos. Como fica no mesmo banco, continue mantendo backups externos para recuperação de falhas do disco. A tabela é criada automaticamente na próxima inicialização do app; nenhuma empresa real é removida pela atualização do código.
+
 ## Publicar no Streamlit Community Cloud
+
+Para publicar a atualização 0.1.4 e a página pública de download e demonstração, siga [ATUALIZACAO_0_1_4.md](ATUALIZACAO_0_1_4.md). [PUBLICACAO_WINDOWS.md](PUBLICACAO_WINDOWS.md) conserva as instruções e resultados da entrega anterior. As instruções abaixo se referem à edição protegida com login e banco. A demonstração pública é separada da seleção de empresas e não acessa a base real.
 
 Envie ao GitHub os módulos Python do app, `app_chrome.css`, `requirements.txt`, `README.md`, `.gitignore`, `assets/` e `.streamlit/config.toml`. O arquivo `.streamlit/secrets.toml.example` contém somente exemplos e pode ser enviado.
 
@@ -118,31 +150,55 @@ Referências: [publicação](https://docs.streamlit.io/deploy/streamlit-communit
 - **`redirect_uri_mismatch`:** a URI dos Secrets precisa coincidir exatamente com uma URI autorizada no mesmo cliente OAuth Google.
 - **Barra da hospedagem cobrindo o app:** publique o `ui.py` atualizado. Para apps públicos, o modo oficial de incorporação pode ser acessado em [skopos.streamlit.app/?embed=true](https://skopos.streamlit.app/?embed=true).
 
+## Rotina simples: vendas diárias e financeiro
+
+Quem tem apenas o total vendido em cada dia pode usar **Vendas e estoque → Importar vendas diárias**. Baixe o modelo ou o exemplo preenchido, substitua os dados de exemplo e envie um CSV com `data;total_vendas`. Datas usam `DD-MM-AAAA`; valores usam vírgula decimal, sem separador de milhar, com até duas casas (`1250,00`). Todas as importações CSV usam ponto e vírgula (`;`) para separar as colunas. Uma data aparece uma única vez por arquivo. Reimportar a mesma data atualiza seu total. Um dia sem registro é desconhecido; para informar um dia sem vendas, use zero.
+
+Esses totais representam vendas realizadas. Não criam pedidos fictícios, recebimentos, margens ou clientes e não são somados às vendas por item. A Visão geral mostra o total e a média apenas dos dias informados, além da disponibilidade dos demais dados e suas datas de atualização.
+
+Em **Lançamentos → Importar lançamentos financeiros**, há modelo, exemplo, prévia e confirmação. Colunas obrigatórias: `referencia;data;tipo;categoria;descricao;valor;status`. O modelo também inclui `data_pagamento;vencimento;forma_pagamento;observacoes`.
+
+- `referencia`: identificação estável e única da movimentação, por exemplo `ALUGUEL-2026-10`. A reimportação atualiza essa referência dentro da mesma empresa. Referências diferentes criam lançamentos diferentes; não duplique um registro manual no CSV.
+- `data`: data do registro/documento, separada da data em que o dinheiro entra ou sai.
+- `tipo`: `Receita` ou `Despesa`; `status`: `Pago` ou `Pendente`.
+- `valor`: maior que zero, vírgula decimal e até duas casas.
+- `data_pagamento`: obrigatória para `Pago`; vazia para `Pendente`.
+- `vencimento`: obrigatório para `Pendente`.
+- `forma_pagamento`: opcional, com padrão `Não informado`; `observacoes`: opcional.
+
+Datas do registro, pagamento e vencimento usam `DD-MM-AAAA`. Arquivos com erros não gravam nenhuma linha. O histórico permite exportar os registros atuais do lote para conferência e excluir a importação após confirmar. Exclusões não recuperam valores anteriores substituídos por reimportação. Colaboradores consultam os dados, mas não importam, excluem nem gerenciam recorrências e saldo inicial.
+
+Em **Lançamentos → Despesas recorrentes**, cadastre aluguel ou outras contas e gere os meses desejados, até 24 meses desde o início cadastrado. As contas são criadas como pendentes. Repetir a geração não duplica nem altera as contas existentes, inclusive as já pagas. Dias inexistentes no mês usam o último dia daquele mês. Desativar uma recorrência impede novas gerações, preservando contas existentes. Para reajustes, cadastre a nova regra no mês correto e revise as contas futuras já geradas.
+
+Em **Fluxo de caixa**, informe o saldo consolidado de caixa e contas no início de uma data, antes das movimentações desse dia. O saldo inicial não é receita. A visão mostra saldo realizado pelos registros e projeção com contas pendentes; pagamentos anteriores ao início do filtro, mas posteriores ao saldo inicial, são considerados. Pendências vencidas entram no primeiro dia válido da projeção. Sem saldo inicial, o gráfico representa somente a variação dos lançamentos, não o dinheiro disponível. Transferências entre contas da própria empresa não devem ser registradas como entradas/saídas desse caixa consolidado.
+
+Lançamentos novos registram a data efetiva do recebimento/pagamento; contas pendentes pedem essa data ao serem marcadas como pagas. As datas podem ser corrigidas em **Lançamentos → Ações sobre lançamento**. Registros antigos sem essa informação continuam usando a data original e precisam ser conferidos. Saldo calculado a partir de registros incompletos não comprova saldo bancário nem lucro.
+
 ## Carregar dados comerciais
 
-Abra **Vendas e estoque** e baixe os modelos CSV. A importação aceita vírgula ou ponto e vírgula como separador e grava os dados no banco configurado. Há modelos vazios e exemplos preenchidos para vendas e estoque; os exemplos contêm dados fictícios e devem ser substituídos antes de importar.
+Abra **Vendas e estoque** e baixe os modelos CSV. A importação usa ponto e vírgula (`;`) como separador e grava os dados no banco configurado. Há modelos vazios e exemplos preenchidos para vendas e estoque; os exemplos contêm dados fictícios e devem ser substituídos antes de importar. Baixe novamente os modelos anteriores à mudança de padrão de 12/10/2026.
 
 ### CSV de vendas
 
 Uma linha por combinação de pedido e SKU. Colunas obrigatórias:
 
-    pedido_id,data,sku,titulo,quantidade,preco_unitario,custo_unitario
+    pedido_id;data;sku;titulo;quantidade;preco_unitario;custo_unitario
 
 Campos opcionais:
 
-    cliente,cliente_id,canal,cidade,uf,categoria,quantidade_devolvida,desconto,impostos,frete_cobrado,frete_custo,status
+    cliente;cliente_id;canal;cidade;uf;categoria;quantidade_devolvida;desconto;impostos;frete_cobrado;frete_custo;status
 
-Datas devem usar AAAA-MM-DD. Números devem usar ponto decimal, sem separador de milhar, moeda, porcentagem ou notação científica: use 1234.56. Valores como 1.234,56, 1,234.56 e 49,90 são rejeitados. Cada erro de formato indica a linha do CSV (cabeçalho = linha 1), a coluna e o valor; nenhum registro é gravado enquanto houver erro. Cabeçalhos repetidos, colunas desconhecidas, campos obrigatórios vazios e linhas com número errado de campos também são rejeitados. Status permitido: Concluído, Cancelado ou Devolvido. Desconto e impostos são valores por linha. Frete cobrado e custo do frete são valores do pedido: preencha-os somente na primeira linha daquele pedido. A chave de atualização é pedido + SKU; um novo envio atualiza uma venda importada anteriormente. cliente_id é preferível ao nome para contar clientes e frequência sem confundir pessoas com nomes iguais.
+Datas devem usar DD-MM-AAAA, como 12-10-2026. Números devem usar vírgula decimal, sem separador de milhar, moeda, porcentagem ou notação científica: use 1234,56. Valores como 1.234,56, 1,234.56 e 49.90 são rejeitados; inteiros como 10 são aceitos. Cada erro de formato indica a linha do CSV (cabeçalho = linha 1), a coluna e o valor; nenhum registro é gravado enquanto houver erro. Cabeçalhos repetidos, colunas desconhecidas, campos obrigatórios vazios e linhas com número errado de campos também são rejeitados. Status permitido: Concluído, Cancelado ou Devolvido. Desconto e impostos são valores por linha. Frete cobrado e custo do frete são valores do pedido: preencha-os somente na primeira linha daquele pedido. A chave de atualização é pedido + SKU; um novo envio atualiza uma venda importada anteriormente. cliente_id é preferível ao nome para contar clientes e frequência sem confundir pessoas com nomes iguais.
 
 Cancelamentos são excluídos dos valores de venda. Devoluções reduzem unidades e faturamento. CMV é calculado pelas unidades líquidas multiplicadas pelo custo unitário recebido.
 
-Arquivos UTF-8 com BOM e Latin-1 são aceitos. Campos numéricos opcionais vazios assumem zero; textos inválidos e valores não finitos são rejeitados, tanto nas vendas quanto no estoque.
+Arquivos UTF-8 com BOM e Latin-1 são aceitos. Campos numéricos opcionais vazios assumem zero; textos inválidos e valores não finitos são rejeitados, tanto nas vendas quanto no estoque. Os modelos, exemplos, prévias de importação e o CSV da consulta Horus para completar custos usam o padrão brasileiro. A padronização de 12/10/2026 foi validada em 70 testes, incluindo a integração PostgreSQL.
 
 ### CSV de estoque
 
 Uma linha por SKU para cada data de inventário. Colunas obrigatórias:
 
-    data_ref,sku,titulo,quantidade,custo_unitario
+    data_ref;sku;titulo;quantidade;custo_unitario
 
 estoque_minimo é opcional. A chave de atualização é data de inventário + SKU. O giro exige pelo menos duas datas com inventário dentro do período selecionado.
 
@@ -188,7 +244,7 @@ Com as dependências instaladas, execute:
 
     .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 
-Os testes usam bancos SQLite temporários, simulam a identidade e bloqueiam chamadas externas. O adaptador PostgreSQL tem testes de tradução; a validação de integração real deve ser feita ao configurar o serviço externo. Eles cobrem as telas, importação CSV, números inválidos, isolamento de empresa no Horus, busca, formulários, confirmação de remoção e vencimentos. O resumo da IA usa vencimentos para contas pendentes, assim como a tela Contas.
+Os testes usam bancos SQLite temporários, simulam a identidade e bloqueiam chamadas externas. A integração PostgreSQL é opcional no comando acima e usa um banco separado, com schemas temporários; nesta instalação, execute `local_postgres.py test` para essa verificação. A validação de 12/10/2026 passou em 67 testes, incluindo PostgreSQL local, migração, importações simplificadas, saldo inicial, recorrências e permissões. A atualização da base local também preservou os registros anteriores e teve os backups validados por restauração em banco temporário. Nenhuma conexão real com o Horus da livraria foi feita nos testes.
 
 ## Histórico e remoção de importações
 
@@ -198,7 +254,7 @@ Uma reimportação de pedido + SKU ou data de estoque + SKU transfere a linha pa
 
 Dados anteriores à criação do histórico são preservados e agrupados por empresa/tipo com o nome **Dados anteriores ao histórico**. Não é possível recuperar o nome do arquivo original retroativamente. A migração não exclui dados automaticamente.
 
-O acesso Demo da entrada usa uma empresa separada. Dados antigos gerados pelo antigo botão de demonstração permanecem identificados e podem ser apagados em **Apagar demonstração**. Registros financeiros antigos sem essa marca devem ser revisados e removidos por ID em **Lançamentos**; o app não presume que sejam fictícios.
+Dados antigos gerados pelo antigo botão de demonstração permanecem identificados e podem ser apagados em **Apagar demonstração**. Registros financeiros antigos sem essa marca devem ser revisados e removidos por ID em **Lançamentos**; o app não presume que sejam fictícios.
 
 ## Celular e cores
 

@@ -1,0 +1,16 @@
+Skopos para Windows — versão piloto 0.1.0
+
+Esta distribuição é uma versão piloto para validação. A instalação usa arquivos
+do programa separados dos dados privados do usuário do Windows. A desinstalação
+remove o programa e mantém os dados em %LOCALAPPDATA%\Skopos\Data.
+
+Os dados não são sincronizados com outros computadores ou com a demonstração
+online. O login local funciona sem internet. Google, SMTP, Horus e recursos de IA
+dependem de internet e de configuração dos serviços correspondentes.
+
+Mantenha cópias externas dos backups da sua instalação. A documentação e os
+avisos de licenças das dependências estão incluídos nos arquivos do programa.
+
+Esta página informa o comportamento desta versão piloto. Condições comerciais,
+licenciamento e suporte do produto devem ser definidos antes da distribuição
+comercial definitiva.

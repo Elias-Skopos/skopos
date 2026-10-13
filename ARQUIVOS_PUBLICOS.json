@@ -1,0 +1,294 @@
+[
+  {
+    "path": ".gitignore",
+    "sha256": "c09bf3e7b7197c8d07f3caaaa828acff6065f3e74bfa4c69ad4a2762ec314a0d"
+  },
+  {
+    "path": ".streamlit/config.toml",
+    "sha256": "636c7701e0b8e6132ca7d77ec652b54efe8ff98d98eed523a2586e67a905b9f6"
+  },
+  {
+    "path": ".streamlit/secrets.toml.example",
+    "sha256": "30fc04d97146c0c874c656a37887c7aa7577a1b3629329e38af374673e10c728"
+  },
+  {
+    "path": "ATUALIZACAO_0_1_4.md",
+    "sha256": "365b14a79d3c0c73aa1c3dab94f6f1c4b0c7048fc859363eaa7c97618586543a"
+  },
+  {
+    "path": "BACKLOG_INSTALAVEL.md",
+    "sha256": "d2b89f44108752c3d30543aa581c1592936afb5084b6570e5aac0927898a9b4d"
+  },
+  {
+    "path": "Fazer backup local.cmd",
+    "sha256": "56aa770a24a44b603032d3dd9ca82a64c85ec9ea88f5a628c283d9a793c8af1e"
+  },
+  {
+    "path": "Iniciar Skopos local.cmd",
+    "sha256": "ee099980e257d34cd08681f8cf21729500295d523bbccc9785f12db0022eecc7"
+  },
+  {
+    "path": "POSTGRESQL.md",
+    "sha256": "31f72b9a633bb645ea745695f8c0e89f4eb6dae0ec58b848a6cbf9a62fa57925"
+  },
+  {
+    "path": "POSTGRESQL_LOCAL.md",
+    "sha256": "6513d1fd6036769b0d6239c3919ae74cb8fab9727ef9ccbc9c19c93b99a9fd3b"
+  },
+  {
+    "path": "PUBLICACAO_WINDOWS.md",
+    "sha256": "04054429ab067e1688feff0091d383a9469cfe898988cf99b38e4b5a89a636cf"
+  },
+  {
+    "path": "README.md",
+    "sha256": "1ec4ed93e6fcd9f7b98ed748df68a1574146be9bc3c4d2fa470770fe91ff1326"
+  },
+  {
+    "path": "TERMS_DESKTOP.txt",
+    "sha256": "d082852218d93a2b9b5b8471514ad0f61603c546383b139f286fd8792c723ca7"
+  },
+  {
+    "path": "account_ui.py",
+    "sha256": "f1453a8907c7d20c6f35e6aa6ba3123c6a063d76642879ba3ed911aab857c9f1"
+  },
+  {
+    "path": "ai_insights.py",
+    "sha256": "8db9ea2b0e522a93bcd078027719c7a068148c35c673d7264c172e1ea26b8728"
+  },
+  {
+    "path": "analytics.py",
+    "sha256": "1a2598a0154c0cfa63266e5007fbf1c861d47409d67387de6508491267aea06b"
+  },
+  {
+    "path": "app.py",
+    "sha256": "632897fbc2d5cac0f0af63d78258976bdc6c5078e1b3fc454fb3deb3b881951f"
+  },
+  {
+    "path": "app_chrome.css",
+    "sha256": "8f6b5a63f2acdd41943ac77efa1c0f67798dcea84e2fcd16ce7c3103c3c74f64"
+  },
+  {
+    "path": "assets/Logo_barra_lateral.png",
+    "sha256": "2c5616dfbc1ad7bbf8eaa93331e7d945fea6e8d7d3a029050a2ab863dc9b2e07"
+  },
+  {
+    "path": "assets/login_illustration.svg",
+    "sha256": "13644e459085d9beb60d97570e3bef3a14a3381038dc036c693efba00d3c495f"
+  },
+  {
+    "path": "assets/logo.ico",
+    "sha256": "a0d6838c0232568c5358dcac6638823479d58cc399ed7e01ae35dd4ef4323d40"
+  },
+  {
+    "path": "assets/logo_barra_lateral.svg",
+    "sha256": "b8e2073260cf825a60d9c4cfe0d00fb8c4a787eadb353a4fe6d4f7dacb604637"
+  },
+  {
+    "path": "assets/logo_login.png",
+    "sha256": "d8436661a93f9cef6b4c6cec726992bbbdaab15ed81923fac694fe4a0b75df7c"
+  },
+  {
+    "path": "assets/logo_login.svg",
+    "sha256": "30f74c21940079771eb9b3c6365b385d3d1fde7103de1043333d96548158fd64"
+  },
+  {
+    "path": "assets/logo_novo.png",
+    "sha256": "b65473002d223353844ff75049feacc74e68e5232ae997d0abbcde18a25ec249"
+  },
+  {
+    "path": "assets/skopos_desktop_novo.ico",
+    "sha256": "a0d6838c0232568c5358dcac6638823479d58cc399ed7e01ae35dd4ef4323d40"
+  },
+  {
+    "path": "autonomy.py",
+    "sha256": "8a0c0a57c49ee5f6ad9d178d76a39e1768dfd5c80e86a4c1019747af5d6901dd"
+  },
+  {
+    "path": "autonomy_ui.py",
+    "sha256": "faa17eb7073f86a6dab215d084099fe5f1bd283a36da6b0703053d06be2f66cd"
+  },
+  {
+    "path": "build_installer.py",
+    "sha256": "420d55e80cbb381525444208592297e5a29b4eef986ad0910e63d404a96b584f"
+  },
+  {
+    "path": "company_lifecycle.py",
+    "sha256": "6765a1927267671abe8dae2d8961e64e8f4496584ee723ca04592440a37ff3eb"
+  },
+  {
+    "path": "db.py",
+    "sha256": "cfcbbacc198c884e2db8f6787a5b90e1f0ebd31ccfdf6d04bb504dc04c54d20f"
+  },
+  {
+    "path": "demo_data.py",
+    "sha256": "f5c38a258d7fa5ca53eb6403cab02b386ab4dcc86eef2225fa1b857e8c7e9b70"
+  },
+  {
+    "path": "demo_ui.py",
+    "sha256": "3a73719b5e4e2b4b3466dac37ff7cc201677361c05eab3957a985be2a37fb0c3"
+  },
+  {
+    "path": "desktop_defaults.json",
+    "sha256": "cd6397cfc986647e4e486b1799cfae2f2e835c21f565e88fd54116fcff249c0e"
+  },
+  {
+    "path": "desktop_entry.py",
+    "sha256": "7081a0d7eb9a70503bcd8c72dcbc33d592acafbb516ed35d777d394880036d3c"
+  },
+  {
+    "path": "desktop_google.py",
+    "sha256": "dc353be148babff1ca982f614317a6a9c4b162f7b50356d62be70ce1b4504d7f"
+  },
+  {
+    "path": "desktop_setup.py",
+    "sha256": "93730ba0c9b5a233ad50baf794f6e4da005ef4fe8eb5514ef27d9fdda9783bf8"
+  },
+  {
+    "path": "desktop_smoke.py",
+    "sha256": "ec1ec15e7e6f43c86f39bbfd1f93fb4c5e5b14aecb80c433be92af58c7f820ff"
+  },
+  {
+    "path": "export_sources.py",
+    "sha256": "25f2966968ab3ce12896d66e4ea6ddb2ab53f3d4946fc6933dc0dc887c3e05e9"
+  },
+  {
+    "path": "home_finance.py",
+    "sha256": "c4de7e6799327d2fcd11019f55c37ebf4a3005747d91f62bd85b5e85a0a3a3c0"
+  },
+  {
+    "path": "home_finance_ui.py",
+    "sha256": "158476e05bc20e142ec06c86b24963871d6bd455974a471ed62e67b8a3e8445c"
+  },
+  {
+    "path": "horus_api.py",
+    "sha256": "e5b002da1de7bda726d61d7e524b3961e73cce590b0c1f473bc9bd2f5ad5c80e"
+  },
+  {
+    "path": "import_contract.py",
+    "sha256": "1e2c7f77e09c761abb8bc04dc676d812920c35e4bc6aaa02ba3b568a92e78ea1"
+  },
+  {
+    "path": "installer/skopos.iss",
+    "sha256": "96a150e15f331f0161167cadf0a80aede5d3cbc86119a3fa17ed5818b4337645"
+  },
+  {
+    "path": "invitation_email.py",
+    "sha256": "6518d6f11db18a8cee3fc977ae504af8742fbdec67fcc44ed4e08c26603c5b4e"
+  },
+  {
+    "path": "local_app.json.example",
+    "sha256": "427db7bc49825d7e74f413a7e63f0337e0ea394d170b7b73b36604079eb2f4ec"
+  },
+  {
+    "path": "local_app_server.py",
+    "sha256": "ce90df3381decb7247d4f62c8b27f6402277337532a0b217c29019a1b5e81b55"
+  },
+  {
+    "path": "local_config.py",
+    "sha256": "8438da605bddbdf51dfcd7a0cf2b88ad04b25703ba4ecda163d37cb51bb315ca"
+  },
+  {
+    "path": "local_identity.py",
+    "sha256": "70e9f64aefb9908ed5ac837dbab4ec09f32ef4bc94bf15c90ac9cf2c10c5e5e3"
+  },
+  {
+    "path": "local_launcher.py",
+    "sha256": "e85d2d74445ed2a28149e1365d0ff998f88c2c8ab3c7d058801dc965b9e5932b"
+  },
+  {
+    "path": "local_oidc.py",
+    "sha256": "7631e39e4d34641fef91722913706bdcd3ed5f0e0067ce7bd0f1897ebb531b79"
+  },
+  {
+    "path": "local_paths.py",
+    "sha256": "222e63bbc811920c470950d0409dda594033da8524d553865303b70008cb22fd"
+  },
+  {
+    "path": "local_postgres.py",
+    "sha256": "6e10b126312bd84f91c6a41b231c3588964e70a88f2acf6e6b29fb64e9800120"
+  },
+  {
+    "path": "migrate_postgres.py",
+    "sha256": "8eadb11b2af76a545244c523d5d201bb7b26edd7f0d54da2e89831bd49831649"
+  },
+  {
+    "path": "online_app.py",
+    "sha256": "2d0c3d437247235a59ffe0cf3ae53359e745bfe6541e8827025696583f1e925c"
+  },
+  {
+    "path": "postgres_backend.py",
+    "sha256": "2ca22b42091ed38cf7e554d5d4e27e1e91528f856634382755f08b4819b6b7de"
+  },
+  {
+    "path": "public_release.json",
+    "sha256": "faa2d096b4bf9b8cc77c957e09d06aecb9fbc381a93f53cb8e4a72bc3164fe59"
+  },
+  {
+    "path": "requirements-desktop.lock",
+    "sha256": "9851501f133d1a4580be8485c9a19551a569a0522f600887da13cbdb7232aa11"
+  },
+  {
+    "path": "requirements.txt",
+    "sha256": "d66fb166cd1baf18ed4cbc93e7898e272cef2de4675fb41858b7e700fe17583a"
+  },
+  {
+    "path": "tests/test_account_flow.py",
+    "sha256": "f07d472cc160635ed84283a13b8aaa47f85cde4645bb8376ad3103e79a6bdd46"
+  },
+  {
+    "path": "tests/test_autonomy.py",
+    "sha256": "9f32b9024474b3d5ce4d42f412e09b0a17955486c0369b2068ca0b6f3ce753f6"
+  },
+  {
+    "path": "tests/test_company_lifecycle.py",
+    "sha256": "75f6632bb0b07c3312f67a90d3d8227b6a026ac88a2648864240a6b73f7ac7a9"
+  },
+  {
+    "path": "tests/test_desktop_google.py",
+    "sha256": "dc8d2305567aaa7c715d6c272db508f2c6b1eb4b5fe0d0874be31d088f8b0294"
+  },
+  {
+    "path": "tests/test_home_finance.py",
+    "sha256": "3af0be4b058d872deeffa41f5fdaf9ba84ba1023c4cd317e3fe44fda45dbf3fd"
+  },
+  {
+    "path": "tests/test_import_history.py",
+    "sha256": "ba1aecf6cf0bba0e0ca0fcfd06bfdd2391517723a292fefb5463fe0c8956852e"
+  },
+  {
+    "path": "tests/test_local_launcher.py",
+    "sha256": "f44fae9914e10d7186e809919ff3c73830436bbd37456bf127254eba14f7cca7"
+  },
+  {
+    "path": "tests/test_local_paths.py",
+    "sha256": "63f4111a549599e4a4e26d731e18f76f686f5f3e84b805e2dcc08cda9e720062"
+  },
+  {
+    "path": "tests/test_local_postgres.py",
+    "sha256": "12d68f8c43560a33f4d057696a66df892920413ae930c2301b396583aaf2ca2d"
+  },
+  {
+    "path": "tests/test_postgres_integration.py",
+    "sha256": "fe95616e4e6bce6a932b49e583febbdb13b11ee82946e4d769e40fd580ee7ba3"
+  },
+  {
+    "path": "tests/test_public_desktop.py",
+    "sha256": "a81bdd138450a5bc4734d28d45249f6fa88e92237d15afe3ce0dfcb918eda78f"
+  },
+  {
+    "path": "tests/test_regressions.py",
+    "sha256": "c1695b4faa15e4b67a84cd9dbcd05239c0bf1e4ad5ac1a47c586269336bf21a6"
+  },
+  {
+    "path": "ui.py",
+    "sha256": "b2f49692df142c25f7c8088cc2310dd914770a97b3a0c191ef49a5de43a74489"
+  },
+  {
+    "path": "welcome.css",
+    "sha256": "dcf65e15ec4bd3ee9595a2a91d24fde8c6a2146e1cdea6a49d9db0ec5fcc6fa6"
+  },
+  {
+    "path": "welcome_ui.py",
+    "sha256": "0e71b5f18b3f03b8c6d1f4956e1c7ca68b49d6588a617d3df2e4684a1801711a"
+  }
+]

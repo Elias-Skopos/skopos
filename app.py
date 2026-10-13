@@ -1,5 +1,20 @@
 from __future__ import annotations
 
+import os
+import streamlit as st
+from streamlit.errors import StreamlitSecretNotFoundError
+
+# Opt in on the existing Cloud URL after preserving any hosted data.
+# The public entry is selected before importing any database/account module.
+try:
+    public_edition = st.secrets.get("distribution", {}).get("edition") == "public"
+except StreamlitSecretNotFoundError:
+    public_edition = False
+if public_edition and os.environ.get("SKOPOS_DESKTOP") != "1":
+    from online_app import render_public
+    render_public()
+    st.stop()
+
 import base64
 import importlib
 import json
@@ -7,15 +22,12 @@ from datetime import date
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
-import os
-import zipfile
+import time
 
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import streamlit as st
 from PIL import Image, ImageOps
-from streamlit.errors import StreamlitSecretNotFoundError
 
 from analytics import (
     INVENTORY_COLUMNS,
@@ -56,11 +68,14 @@ from db import (
     update_company_member_role,
     upsert_budget,
 )
-from import_contract import read_csv, csv_template
+from import_contract import read_csv, csv_template, brazilian_frame
 from horus_api import HorusAPIError, fetch_orders_and_items, sales_preview, test_connection
 import ui as ui_module
+import autonomy
+import autonomy_ui
+import home_finance_ui
 from account_ui import (
-    ROLE_LABELS, activate_company, clear_company_session, company_invitation_form,
+    ROLE_LABELS, activate_company, clear_company_session, company_invitation_form, company_deletion_panel,
     open_workspace_picker, personal_profile, workspace_picker,
 )
 
@@ -93,104 +108,15 @@ def configured_identity_providers() -> list[tuple[str, str]]:
         return []
     provider_config = auth_config.get("google", {})
     required = ("client_id", "client_secret", "server_metadata_url")
+    if os.environ.get("SKOPOS_DESKTOP") == "1" and all(auth_config.get("local", {}).get(key) for key in required):
+        return [("local", "Senha local ou Google")]
     if all(provider_config.get(key) for key in required):
         return [("google", "Google")]
     return []
 
 
 def render_login_page(identity_providers: list[tuple[str, str]]) -> None:
-    st.markdown(
-        """
-        <style>
-        [data-testid="stAppViewContainer"] { background: #fff; }
-        [data-testid="stHeader"], [data-testid="stToolbar"], #MainMenu, footer {
-            visibility: hidden; height: 0; min-height: 0;
-        }
-        [data-testid="stMainBlockContainer"] {
-            max-width: none !important; padding: 0 !important; margin: 0 !important;
-        }
-        [data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] {
-            gap: 0 !important;
-        }
-        .st-key-login_layout [data-testid="stHorizontalBlock"] {
-            min-height: 100vh; gap: 0 !important; align-items: stretch !important;
-        }
-        .st-key-login_left_panel {
-            display: flex; align-items: center; justify-content: center;
-            padding: clamp(2rem, 5.5vw, 5.5rem); background: #fff;
-        }
-        .st-key-login_right_panel {
-            display: flex; align-items: center; justify-content: center;
-            padding: clamp(2rem, 5vw, 5rem); min-height: 100vh;
-            color: #fff; background: #625fe9; border-radius: 14px 0 0 14px;
-        }
-        .st-key-login_left_panel > div[data-testid="stVerticalBlock"],
-        .st-key-login_right_panel > div[data-testid="stVerticalBlock"] {
-            width: min(100%, 470px); margin: auto; justify-content: center;
-        }
-        .login-left-marker, .login-right-marker { display: none; }
-        .login-brand { display: flex; align-items: center; gap: .65rem; margin-bottom: 2.8rem; color: #171927; }
-        .login-brand-mark { display: grid; place-items: center; width: 2.55rem; height: 2.55rem;
-            border-radius: .85rem; background: #f0efff; font-size: 1.25rem; }
-        .st-key-login_logo_image { width: 100%; margin-bottom: 2.8rem; overflow: visible !important; }
-        .st-key-login_logo_image [data-testid="stImage"],
-        .st-key-login_logo_image [data-testid="stImage"] > div {
-            width: 100% !important; max-width: 420px !important; height: auto !important;
-            overflow: visible !important; border-radius: 0 !important; clip-path: none !important;
-        }
-        .st-key-login_logo_image img {
-            display: block !important; width: 100% !important; height: auto !important;
-            max-width: 420px !important; object-fit: contain !important; object-position: left center !important;
-            border-radius: 0 !important; clip-path: none !important;
-        }
-        .login-brand-name { font-size: 1.3rem; font-weight: 760; letter-spacing: -.04em; }
-        .login-eyebrow { margin-bottom: .7rem; color: #625fe9; font-size: .76rem; font-weight: 750;
-            letter-spacing: .04em; }
-        .st-key-login_left_panel h1 {
-            margin: 0 0 .55rem; color: #171927; font-size: clamp(2.1rem, 3.3vw, 3rem);
-            font-weight: 760; letter-spacing: -.045em;
-        }
-        .login-description { margin-bottom: 1.8rem; color: #73798b; font-size: 1rem; line-height: 1.65; }
-        .st-key-login_left_panel button[kind="primary"] {
-            min-height: 3.35rem; border: 1px solid #625fe9; border-radius: .7rem;
-            color: #fff; background: #625fe9; font-size: .98rem; font-weight: 700;
-            box-shadow: 0 8px 22px rgba(98,95,233,.2); transition: transform .15s ease, background .15s ease;
-        }
-        .st-key-login_left_panel button[kind="primary"]:hover {
-            border-color: #514ed5; background: #514ed5; transform: translateY(-1px);
-        }
-        .login-divider { display: flex; align-items: center; gap: .8rem; margin: 1.55rem 0 1rem;
-            color: #a2a6b2; font-size: .78rem; }
-        .login-divider::before, .login-divider::after { content: ""; flex: 1; height: 1px; background: #e8e9ef; }
-        .login-footnote { color: #9298a6; font-size: .82rem; line-height: 1.6; text-align: center; }
-        .login-notice { padding: .9rem 1rem; border: 1px solid #f2dfb5; border-radius: .7rem;
-            color: #7a5b21; background: #fff9ec; font-size: .9rem; line-height: 1.5; }
-        .login-hero-eyebrow { color: rgba(255,255,255,.74); font-size: .76rem; font-weight: 750;
-            letter-spacing: .14em; text-align: center; text-transform: uppercase; }
-        .st-key-login_right_panel h2 {
-            margin: .6rem 0 .5rem; color: #fff; font-size: clamp(1.8rem, 2.6vw, 2.5rem);
-            font-weight: 740; letter-spacing: -.04em; line-height: 1.2; text-align: center;
-        }
-        .login-hero-copy { max-width: 32rem; margin: 0 auto 1.15rem; color: rgba(255,255,255,.8);
-            font-size: 1rem; line-height: 1.6; text-align: center; }
-        .login-hero-art { display: block; width: min(100%, 38rem); max-height: 25rem; margin: .2rem auto .7rem; }
-        .login-hero-caption { color: rgba(255,255,255,.75); font-size: .83rem; text-align: center; }
-        @media (max-width: 760px) {
-            .st-key-login_layout [data-testid="stHorizontalBlock"] {
-                min-height: 100vh; flex-wrap: wrap !important;
-            }
-            .st-key-login_left_panel { min-height: 72vh; padding: 2rem 1.5rem; }
-            .st-key-login_right_panel {
-                min-height: auto; padding: 2.2rem 1.5rem; border-radius: 14px 14px 0 0;
-            }
-            .st-key-login_left_panel > div[data-testid="stVerticalBlock"] { min-height: 65vh; }
-            .login-brand { margin-bottom: 2rem; }
-            .login-hero-art { max-height: 15rem; }
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.html(Path(__file__).with_name("welcome.css"))
 
     with st.container(key="login_layout"):
         left_panel, right_panel = st.columns([0.86, 1.14], gap=None)
@@ -200,19 +126,19 @@ def render_login_page(identity_providers: list[tuple[str, str]]) -> None:
             st.image(str(ASSETS_DIR / "logo_login.svg"), width=420)
         st.title("Faça seu login")
         st.markdown(
-            '<div class="login-description">Entre com sua conta Google para acompanhar '
+            '<div class="login-description">Entre com seu perfil para acompanhar '
             'as finanças e as vendas da sua empresa.</div>',
             unsafe_allow_html=True,
         )
         if identity_providers:
             if st.button(
-                "Continuar com Google",
+                "Entrar com senha ou Google" if identity_providers[0][0] == "local" else "Continuar com Google",
                 icon=":material/login:",
                 key="login_google",
                 type="primary",
                 width="stretch",
             ):
-                st.login("google")
+                st.login(identity_providers[0][0])
         else:
             st.markdown(
                 '<div class="login-notice">O acesso pelo Google ainda precisa ser configurado. '
@@ -255,6 +181,15 @@ except Exception:
     st.stop()
 identity_subject = st.user.get("sub", "")
 identity_issuer = st.user.get("iss", "")
+if os.environ.get("SKOPOS_DESKTOP") == "1":
+    if identity_issuer != st.secrets.get("desktop", {}).get("issuer"):
+        st.error("Este acesso não pertence à instalação local.")
+        st.stop()
+    if st.user.get("exp", 0) < time.time():
+        st.logout()
+        st.stop()
+    identity_issuer = st.user.get("skopos_issuer", "")
+    identity_subject = st.user.get("skopos_subject", "")
 if not identity_subject or not identity_issuer:
     st.error("O provedor não retornou os dados necessários para identificar esta conta.")
     st.stop()
@@ -299,7 +234,7 @@ st.session_state["role_context"] = role_context
 
 REVENUE_CATEGORIES = ["Vendas de livros" if company_segment == "Livraria" else "Vendas de produtos e serviços", "Vendas online", "Eventos", "Assinaturas", "Outras receitas"]
 EXPENSE_CATEGORIES = ["Fornecedores", "Aluguel", "Folha e encargos", "Marketing", "Fretes", "Impostos", "Tecnologia", "Outras despesas"]
-PAYMENT_METHODS = ["PIX", "Cartão", "Dinheiro", "Boleto", "Transferência"]
+PAYMENT_METHODS = ["Não informado", "PIX", "Cartão", "Dinheiro", "Boleto", "Transferência"]
 
 
 def load_sales() -> pd.DataFrame:
@@ -366,24 +301,6 @@ def logout_user() -> None:
     st.logout()
 
 
-def desktop_shortcut_zip() -> bytes:
-    output = BytesIO()
-    # Ícone incorporado para o download funcionar mesmo sem um asset separado no Cloud.
-    icon = base64.b64decode('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')
-    installer = 'Option Explicit\nDim shell, files, sourceDir, iconDir, shortcut\nSet shell = CreateObject("WScript.Shell")\nSet files = CreateObject("Scripting.FileSystemObject")\nsourceDir = files.GetParentFolderName(WScript.ScriptFullName)\niconDir = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\\Skopos"\nIf Not files.FolderExists(iconDir) Then files.CreateFolder(iconDir)\nfiles.CopyFile sourceDir & "\\Skopos.ico", iconDir & "\\Skopos.ico", True\nSet shortcut = shell.CreateShortcut(shell.SpecialFolders("Desktop") & "\\Skopos Online.lnk")\nshortcut.TargetPath = shell.ExpandEnvironmentStrings("%WINDIR%") & "\\explorer.exe"\nshortcut.Arguments = "https://skopos.streamlit.app/"\nshortcut.IconLocation = iconDir & "\\Skopos.ico,0"\nshortcut.Description = "Abrir o Skopos no navegador"\nshortcut.Save\nMsgBox "Atalho Skopos Online criado na area de trabalho.", 64, "Skopos"\n'
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("Skopos.ico", icon)
-        archive.writestr("Criar atalho.vbs", installer.replace("\n", "\r\n"))
-        archive.writestr("LEIA-ME.txt", (
-            "1. Clique com o botao direito no ZIP e escolha Extrair tudo.\r\n"
-            "2. Abra a pasta extraida e de dois cliques em Criar atalho.vbs.\r\n"
-            "3. Use Skopos Online na area de trabalho.\r\n"
-            "O icone fica salvo na pasta local do usuario; a pasta extraida pode ser removida.\r\n"
-            "O atalho abre o app no navegador e requer internet.\r\n"
-        ))
-    return output.getvalue()
-
-
 def account_menu() -> None:
     st.session_state.setdefault("hide_financial_values", True)
     dark_mode = st.session_state.get("dark_mode", False)
@@ -420,16 +337,6 @@ def account_menu() -> None:
             key="toggle_dark_mode_topbar_dark" if dark_mode else "toggle_dark_mode_topbar_light",
             on_click=toggle_dark_mode,
             width="content",
-        )
-        st.download_button(
-            "Atalho desktop",
-            data=desktop_shortcut_zip(),
-            file_name="Skopos-Atalho.zip",
-            mime="application/zip",
-            icon=":material/download:",
-            help="Extraia o ZIP e execute Criar atalho.vbs para criar o atalho com o logo do Skopos na área de trabalho.",
-            on_click="ignore",
-            key="download_desktop_shortcut",
         )
         with st.popover("Conta", icon=":material/account_circle:", width="content"):
                 account_name = st.user.get("name", "") or "Conta Google"
@@ -489,7 +396,7 @@ PAGE_ICONS = {
 }
 
 SHORTCUT_TARGETS = [
-    "Visão geral", "Curva ABC", "Relatórios", "Fluxo de caixa", "Contas",
+    "Visão geral", "Relatórios", "Fluxo de caixa", "Contas", "Curva ABC",
     "Insights com IA", "Vendas e estoque", "Lançamentos", "Orçamento", "API do Horus",
     "Configuração de IA", "Empresa", "Meu perfil",
 ]
@@ -516,7 +423,7 @@ def navigate_collapsed_rail(target: str) -> None:
 def collapsed_nav_rail(role: str) -> None:
     groups = {
         "Acompanhamento": [
-            "Visão geral", "Curva ABC", "Relatórios", "Fluxo de caixa", "Contas", "Insights com IA",
+            "Visão geral", "Relatórios", "Fluxo de caixa", "Contas", "Curva ABC", "Insights com IA",
         ],
         "Alimentar e planejar": ["Vendas e estoque", "Lançamentos", "Orçamento"],
         "Gestão da Plataforma": (["API do Horus", "Configuração de IA", "Empresa"] if role == "administrator" else []) + ["Meu perfil"],
@@ -621,6 +528,9 @@ def home_page(df: pd.DataFrame, start: date, end: date) -> None:
     render_dashboard_welcome(company_id, display_name)
     start, end = render_period_filter(start, end)
 
+    home_finance_ui.render_summary(df, start, end, company_id, identity_issuer, identity_subject,
+                                   can_edit, st.session_state.get("hide_financial_values", True))
+
     raw_shortcuts = get_user_setting(f"home_shortcuts_{company_id}", identity_issuer, identity_subject, get_app_setting("home_shortcuts", company_id))
     try:
         shortcuts = json.loads(raw_shortcuts) if raw_shortcuts else ["Visão geral", "Vendas e estoque", "Lançamentos", "Contas"]
@@ -639,20 +549,6 @@ def home_page(df: pd.DataFrame, start: date, end: date) -> None:
                     args=(target,),
                     width="content",
                 )
-
-    scoped = scope_df(df, start, end)
-    paid = scoped[scoped["status"] == "Pago"] if not scoped.empty else scoped
-    income = paid.loc[paid["kind"] == "Receita", "amount"].sum() if not paid.empty else 0
-    expense = paid.loc[paid["kind"] == "Despesa", "amount"].sum() if not paid.empty else 0
-    st.subheader("Entradas e saídas")
-    st.caption(f"Lançamentos pagos no período de {start:%d/%m/%Y} a {end:%d/%m/%Y}.")
-    hidden = st.session_state.get("hide_financial_values", True)
-    incoming_col, outgoing_col = st.columns(2)
-    with incoming_col:
-        kpi("Entradas", money(income), "Receitas pagas no período", hide_values=hidden)
-    with outgoing_col:
-        kpi("Saídas", money(expense), "Despesas pagas no período", hide_values=hidden)
-
 
 def account_settings_page() -> None:
     page_header("Minha conta", "Meu perfil", "Seu perfil, preferências pessoais e participação nas empresas.")
@@ -689,6 +585,7 @@ def company_settings_page() -> None:
             st.button("API do Horus", on_click=navigate_to, args=("API do Horus",), key="company_horus")
             st.button("Configuração de IA", on_click=navigate_to, args=("Configuração de IA",), key="company_ai")
         st.caption(f"Banco em uso: {database_backend()}")
+    company_deletion_panel(active_company, identity_issuer, identity_subject)
 
 
 def load_transactions() -> pd.DataFrame:
@@ -697,7 +594,7 @@ def load_transactions() -> pd.DataFrame:
         return df
     df["date"] = pd.to_datetime(df["date"])
     df["due_date"] = pd.to_datetime(df["due_date"], errors="coerce")
-    return df
+    return autonomy.effective_finance(df)
 
 
 def scope_df(df: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
@@ -785,7 +682,7 @@ def render_dashboard_welcome(company_id: int, display_name: str) -> None:
         welcome_col, image_col = st.columns([1.1, 1], vertical_alignment="center")
         with welcome_col:
             st.subheader(f"Olá, {display_name}!")
-            st.write(f"Bem-vindo(a) à gestão de **{company_name}**. Aqui está o panorama da sua empresa ({company_segment.lower()}).")
+            st.write(f"Bem-vindo(a) à gestão de **{company_name}**. Aqui está o panorama da sua empresa.")
         with image_col:
             if cover:
                 st.image(cover, width="stretch")
@@ -886,10 +783,10 @@ def sidebar() -> tuple[str, date, date, int]:
         st.divider()
         view_pages = [
             ("Visão geral", "Visão geral"),
-            ("Curva ABC", "Curva ABC"),
             ("Relatórios", "Relatórios"),
             ("Fluxo de caixa", "Fluxo de caixa"),
             ("Contas", "Contas"),
+            ("Curva ABC", "Curva ABC"),
             ("Insights com IA", "Insights com IA"),
         ]
         data_pages = [
@@ -1042,6 +939,8 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
     page_header("Painel executivo", "Visão geral", "Vendas, rentabilidade, clientes, operação e caixa em um só lugar.")
     start, end = render_period_filter(start, end)
     hide_values = st.session_state.get("hide_financial_values", True)
+    autonomy_ui.data_status(company_id)
+    autonomy_ui.daily_summary(company_id, start, end, hide=hide_values)
     show_kpi_info = st.toggle(
         "Exibir explicações dos indicadores",
         value=True,
@@ -1079,7 +978,7 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
     }
     sales = calculate_sales(sales_df, start, end)
     if sales is None:
-        st.info("Ainda não há vendas por item no período. Importe o CSV de vendas ou configure uma API para habilitar os KPIs comerciais.")
+        st.info("Dados não informados para vendas por item neste período. Margens, pedidos e clientes precisam de vendas detalhadas; os totais diários não permitem calcular esses indicadores. Importe o modelo por item ou consulte o Horus quando esses dados estiverem disponíveis.")
     else:
         st.subheader("Fluxo financeiro e resultado")
         st.caption("Receita líquida = vendas brutas − devoluções − descontos − impostos. A contribuição considera CMV e frete; os valores de frete são contados uma vez por pedido.")
@@ -1093,8 +992,8 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
             [
                 ("Pedidos", f"{sales['orders']:,}".replace(",", "."), "Pedidos concluídos no período"),
                 ("Ticket médio", money(sales["ticket"]), "Receita líquida ÷ pedidos"),
-                ("Clientes ativos", f"{sales['customers']:,}".replace(",", "."), "Clientes identificados no período"),
-                ("Frequência de compra", f"{sales['order_frequency']:.2f}", "Pedidos por cliente identificado"),
+                ("Clientes ativos", f"{sales['customers']:,}".replace(",", ".") if sales['customers'] else "Não informado", "Clientes identificados no período"),
+                ("Frequência de compra", f"{sales['order_frequency']:.2f}" if sales['customers'] else "Não informado", "Pedidos por cliente identificado"),
             ],
             [
                 ("Exemplares líquidos", f"{sales['units']:,.0f}".replace(",", "."), "Vendidos menos devolvidos"),
@@ -1218,6 +1117,8 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
 
     st.divider()
     st.subheader("Financeiro e compromissos")
+    if df.empty:
+        st.info("Recebimentos e despesas não informados. Cadastre ou importe em Lançamentos. Os totais de vendas não preenchem o caixa automaticamente.")
     sdf = scope_df(df, start, end)
     paid = sdf[sdf["status"] == "Pago"] if not sdf.empty else sdf
     revenue = paid.loc[paid["kind"] == "Receita", "amount"].sum() if not paid.empty else 0
@@ -1229,11 +1130,13 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
         pending = pending[due_in_range]
     pending_pay = pending.loc[pending["kind"] == "Despesa", "amount"].sum() if not pending.empty else 0
     finance_cols = st.columns(4)
+    has_receipts = not df.empty and (df["kind"] == "Receita").any()
+    has_expenses = not df.empty and (df["kind"] == "Despesa").any()
     finance_metrics = [
-        ("Receitas pagas", money(revenue), "Lançamentos financeiros"),
-        ("Despesas pagas", money(expense), "Lançamentos financeiros"),
-        ("Saldo dos lançamentos", money(result), "Receitas pagas − despesas pagas"),
-        ("A pagar no período", money(pending_pay), "Por vencimento cadastrado"),
+        ("Receitas pagas", money(revenue) if has_receipts else "Não informado", "Lançamentos financeiros"),
+        ("Despesas pagas", money(expense) if has_expenses else "Não informado", "Lançamentos financeiros"),
+        ("Saldo dos lançamentos", money(result) if has_receipts and has_expenses else "Não informado", "Receitas pagas − despesas pagas"),
+        ("A pagar no período", money(pending_pay) if has_expenses else "Não informado", "Por vencimento cadastrado"),
     ]
     for column, (label, value, foot) in zip(finance_cols, finance_metrics):
         with column:
@@ -1296,6 +1199,7 @@ def analytics_overview(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: p
 
 def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> None:
     page_header("Dados comerciais", "Vendas e estoque", "Carregue os dados que alimentam faturamento por produto, clientes, canais, curva ABC e giro.")
+    autonomy_ui.daily_summary(company_id, date(1900, 1, 1), date(2200, 12, 31), hide=st.session_state.get("hide_financial_values", True))
     if not can_edit:
         st.info("Seu perfil permite consultar os dados da empresa, mas não importar ou alterar vendas e estoque.")
         if not sales_df.empty:
@@ -1314,8 +1218,10 @@ def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> Non
                                           "quantity": "Quantidade", "unit_cost": "Custo unitário", "minimum_quantity": "Estoque mínimo"}),
                          width="stretch", hide_index=True)
         return
-    st.caption("O app aceita CSV ou sincronização pela API. O formato abaixo é por item de pedido: uma linha para cada combinação de pedido e SKU.")
-    st.info("Padrão obrigatório: números sem separador de milhar e com ponto decimal (1234.56); datas AAAA-MM-DD. Não use R$, %, vírgula decimal ou fórmulas. CSV separado por vírgula ou ponto e vírgula; UTF-8 recomendado. Campos numéricos opcionais vazios valem zero. O arquivo inteiro é bloqueado se houver erro.")
+    autonomy_ui.import_form("daily", company_id, identity_issuer, identity_subject)
+    autonomy_ui.import_history("daily", company_id, identity_issuer, identity_subject)
+    st.caption("O app também aceita CSV de vendas por item ou consulta pela API. O formato abaixo é por item de pedido: uma linha para cada combinação de pedido e SKU.")
+    st.info("Padrão obrigatório: datas DD-MM-AAAA (12-10-2026), números com vírgula decimal (1234,56) e CSV separado por ponto e vírgula (;). Não use separador de milhar, R$, %, ponto decimal ou fórmulas. UTF-8 recomendado. Campos numéricos opcionais vazios valem zero. O arquivo inteiro é bloqueado se houver erro.")
     sales_template = csv_template(SALES_COLUMNS)
     inventory_template = csv_template(INVENTORY_COLUMNS)
     template_cols = st.columns(2)
@@ -1324,7 +1230,7 @@ def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> Non
     with template_cols[1]:
         st.download_button("Baixar modelo de estoque CSV", inventory_template, file_name="modelo_estoque_skopos.csv", mime="text/csv", width="stretch")
     with st.expander("Exemplos preenchidos e instruções"):
-        st.caption("Os exemplos contêm dados fictícios. Use-os como referência e substitua todas as linhas pelos seus dados antes de importar. No Excel, confira o CSV em um editor de texto após exportar: a configuração regional pode transformar o ponto decimal em vírgula.")
+        st.caption("Os exemplos contêm dados fictícios. Substitua todas as linhas pelos seus dados antes de importar. Ao salvar no Excel, confira que o CSV usa ponto e vírgula entre colunas, vírgula nos valores e datas DD-MM-AAAA.")
         example_sales = [{"pedido_id": "EXEMPLO-001", "data": "2026-10-01", "sku": "LIVRO-001", "titulo": "Livro de exemplo", "quantidade": "2", "preco_unitario": "49.90", "custo_unitario": "25.00", "desconto": "0", "status": "Concluído"}]
         example_stock = [{"data_ref": "2026-10-01", "sku": "LIVRO-001", "titulo": "Livro de exemplo", "quantidade": "10", "custo_unitario": "25.00", "estoque_minimo": "3"}, {"data_ref": "2026-10-31", "sku": "LIVRO-001", "titulo": "Livro de exemplo", "quantidade": "8", "custo_unitario": "25.00", "estoque_minimo": "3"}]
         with st.container(horizontal=True):
@@ -1341,7 +1247,7 @@ def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> Non
                 render_import_errors(errors)
                 if not errors:
                     st.caption(f"{len(rows)} linhas prontas para importar.")
-                    st.dataframe(pd.DataFrame(rows).head(8), width="stretch", hide_index=True)
+                    st.dataframe(brazilian_frame(pd.DataFrame(rows)).head(8), width="stretch", hide_index=True)
                     if st.button("Importar vendas", type="primary", key="import_sales"):
                         count = import_sales_lines(rows, company_id, identity_issuer, identity_subject, source=uploaded.name)
                         st.success(f"{count} linhas de venda importadas ou atualizadas.")
@@ -1359,7 +1265,7 @@ def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> Non
                 render_import_errors(errors)
                 if not errors:
                     st.caption(f"{len(rows)} posições de SKU prontas para importar.")
-                    st.dataframe(pd.DataFrame(rows).head(8), width="stretch", hide_index=True)
+                    st.dataframe(brazilian_frame(pd.DataFrame(rows)).head(8), width="stretch", hide_index=True)
                     if st.button("Importar estoque", type="primary", key="import_inventory"):
                         count = import_inventory_snapshots(rows, company_id, identity_issuer, identity_subject, source=uploaded_stock.name)
                         st.success(f"{count} posições de estoque importadas ou atualizadas.")
@@ -1666,7 +1572,7 @@ def api_configuration_page() -> None:
             st.warning("O Horus não retornou custo unitário nos itens consultados. Para evitar margens fictícias, a gravação no Skopos fica desabilitada até que o custo seja disponibilizado pela API ou preenchido no CSV.")
             st.download_button(
                 "Baixar prévia CSV para completar os custos",
-                preview_frame.drop(columns=["valor_liquido_horus"]).to_csv(index=False).encode("utf-8-sig"),
+                csv_template(SALES_COLUMNS, preview_frame.to_dict("records")),
                 file_name="vendas_horus_completar_custos.csv",
                 mime="text/csv",
                 width="content",
@@ -1811,12 +1717,16 @@ def team_page(show_header: bool = True) -> None:
 def transactions_page(df: pd.DataFrame) -> None:
     page_header("Operação", "Lançamentos", "Registre entradas e saídas com o mínimo de fricção e mantenha o histórico auditável.")
     if can_edit:
+        autonomy_ui.import_form("finance", company_id, identity_issuer, identity_subject)
+        autonomy_ui.import_history("finance", company_id, identity_issuer, identity_subject)
+        autonomy_ui.recurrence_form(company_id, identity_issuer, identity_subject, EXPENSE_CATEGORIES, PAYMENT_METHODS)
         with st.expander("＋ Novo lançamento", expanded=df.empty):
             kind_col, status_col = st.columns(2)
             kind = kind_col.selectbox("Tipo", ["Receita", "Despesa"], key=f"new_transaction_kind_{company_id}")
             status = status_col.selectbox("Status", ["Pago", "Pendente"], key=f"new_transaction_status_{company_id}")
             with st.form("new_transaction", clear_on_submit=True):
-                dt = st.date_input("Data", value=date.today(), format="DD/MM/YYYY")
+                dt = st.date_input("Data do registro", value=date.today(), format="DD/MM/YYYY")
+                settled = st.date_input("Data do recebimento / pagamento", value=date.today(), disabled=status == "Pendente", format="DD/MM/YYYY")
                 categories = REVENUE_CATEGORIES if kind == "Receita" else EXPENSE_CATEGORIES
                 category = st.selectbox("Categoria", categories)
                 description = st.text_input("Descrição", placeholder="Ex.: compra de 40 exemplares da Editora Horizonte")
@@ -1835,6 +1745,7 @@ def transactions_page(df: pd.DataFrame) -> None:
                             "description": description.strip(), "amount": amount,
                             "payment_method": payment, "status": status,
                             "due_date": due.isoformat() if status == "Pendente" else None,
+                            "payment_date": settled.isoformat() if status == "Pago" else None,
                             "notes": notes.strip(),
                         }, company_id, identity_issuer, identity_subject)
                         st.success("Lançamento salvo.")
@@ -1857,12 +1768,14 @@ def transactions_page(df: pd.DataFrame) -> None:
         filtered = filtered[mask]
     view = filtered.copy()
     view["Data"] = view["date"].dt.strftime("%d/%m/%Y")
+    view["Data do registro"] = view["record_date"].dt.strftime("%d/%m/%Y")
     view["Tipo"] = view["kind"]
     view["Categoria"] = view["category"]
     view["Descrição"] = view["description"]
     view["Status"] = view["status"]
     view["Valor"] = view["amount"].map(money)
-    st.dataframe(view[["Data","Tipo","Categoria","Descrição","Status","Valor"]], width="stretch", hide_index=True)
+    st.caption("Data mostra recebimento/pagamento para lançamentos pagos e a data do registro para pendentes. O vencimento de contas pendentes pode ser consultado em Contas.")
+    st.dataframe(view[["Data","Data do registro","Tipo","Categoria","Descrição","Status","Valor"]], width="stretch", hide_index=True)
 
     if can_edit:
         with st.expander("Ações sobre lançamento"):
@@ -1871,6 +1784,10 @@ def transactions_page(df: pd.DataFrame) -> None:
                 selected = st.selectbox("ID do lançamento", ids, format_func=lambda x: f"#{x} · {filtered.loc[filtered['id']==x, 'description'].iloc[0]}")
                 current_row = filtered.loc[filtered["id"] == selected].iloc[0]
                 pending_due = None
+                previous_payment = pd.to_datetime(current_row.get("payment_date"), errors="coerce")
+                settled_date = st.date_input("Data ao confirmar recebimento / pagamento",
+                                             value=previous_payment.date() if pd.notna(previous_payment) else date.today(),
+                                             format="DD/MM/YYYY", key=f"settle_date_{company_id}_{selected}")
                 if current_row["status"] == "Pago":
                     previous_due = current_row["due_date"]
                     pending_due = st.date_input(
@@ -1879,10 +1796,14 @@ def transactions_page(df: pd.DataFrame) -> None:
                         format="DD/MM/YYYY",
                         key=f"pending_due_{company_id}_{selected}",
                     )
+                    if st.button("Corrigir data do recebimento / pagamento", key=f"correct_payment_{company_id}_{selected}"):
+                        update_status(selected, "Pago", company_id, identity_issuer, identity_subject, payment_date=settled_date.isoformat())
+                        st.rerun()
                 c1, c2 = st.columns(2)
                 if c1.button("Alternar status", width="stretch"):
                     update_status(selected, "Pendente" if current_row["status"] == "Pago" else "Pago", company_id, identity_issuer, identity_subject,
-                                  due_date=pending_due.isoformat() if pending_due is not None else None)
+                                  due_date=pending_due.isoformat() if pending_due is not None else None,
+                                  payment_date=settled_date.isoformat() if settled_date is not None else None)
                     st.rerun()
                 if c2.button("Excluir", type="secondary", width="stretch"):
                     delete_transaction(selected, company_id, identity_issuer, identity_subject)
@@ -1920,30 +1841,30 @@ def accounts_page(df: pd.DataFrame, start: date, end: date) -> None:
 def cashflow_page(df: pd.DataFrame, start: date, end: date) -> None:
     page_header("Liquidez", "Fluxo de caixa", "Acompanhe o saldo acumulado e identifique antecipadamente períodos de pressão financeira.")
     start, end = render_period_filter(start, end)
+    opening = autonomy_ui.opening_form(company_id, identity_issuer, identity_subject, can_edit)
+    if opening is None:
+        st.warning("Saldo inicial não informado. O gráfico mostra apenas a variação dos lançamentos no período, sem representar o dinheiro disponível.")
+    else:
+        st.caption(f"Saldo inicial consolidado: {money(opening['amount'])} no início de {date.fromisoformat(opening['date']):%d/%m/%Y}. O saldo considera somente as movimentações registradas desde essa data.")
+    st.caption("Recebimentos e pagamentos realizados usam a data de recebimento/pagamento. Contas pendentes usam o vencimento; pendências anteriores ao período entram na projeção do primeiro dia. Vendas diárias e vendas por item não entram neste caixa automaticamente.")
     if df.empty:
-        st.info("Sem dados para montar o fluxo de caixa.")
+        st.info("Movimentações financeiras não informadas. O saldo inicial sozinho não confirma que os registros estão completos.")
+    daily = autonomy.cash_projection(df, opening, start, end)
+    if daily["actual"].isna().all():
+        st.info("O período selecionado é anterior ao saldo inicial. Escolha um período a partir da data cadastrada.")
         return
-    cf = df.copy()
-    cf["signed"] = cf["amount"].where(cf["kind"] == "Receita", -cf["amount"])
-    cf["cash_date"] = cf["date"].where(cf["status"] == "Pago", cf["due_date"])
-    cf = cf.dropna(subset=["cash_date"]).sort_values("cash_date")
-    cf = cf[cf["cash_date"].dt.date.between(start, end)]
-    if cf.empty:
-        st.info("Não há entradas ou saídas no período selecionado.")
-        return
-    daily = cf.groupby("cash_date", as_index=False)["signed"].sum()
-    daily["saldo_acumulado"] = daily["signed"].cumsum()
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=daily["cash_date"], y=daily["saldo_acumulado"], mode="lines+markers", name="Saldo acumulado", fill="tozeroy"))
+    fig.add_trace(go.Scatter(x=daily["date"], y=daily["actual"], mode="lines", name="Realizado pelos registros"))
+    fig.add_trace(go.Scatter(x=daily["date"], y=daily["projected"], mode="lines", name="Projetado com pendências", line=dict(dash="dash")))
     fig.update_layout(
         height=420,
         margin=dict(l=8, r=8, t=18, b=8),
         xaxis=dict(type="date", title="Data", tickformat="%d/%m/%Y", hoverformat="%d/%m/%Y"),
-        yaxis_title="Saldo projetado",
+        yaxis_title="Saldo pelos registros" if opening else "Variação dos lançamentos",
     )
     ui_module.render_plotly(fig)
-    low = daily.loc[daily["saldo_acumulado"].idxmin()]
-    st.caption(f"Menor saldo projetado: {money(low['saldo_acumulado'])} em {low['cash_date']:%d/%m/%Y}.")
+    low = daily.loc[daily["projected"].idxmin()]
+    st.caption(f"Menor {'saldo projetado pelos registros' if opening else 'variação projetada'}: {money(low['projected'])} em {low['date']:%d/%m/%Y}.")
 
 
 def budget_page(df: pd.DataFrame) -> None:
@@ -2081,7 +2002,8 @@ def ai_insights_page(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: pd.
     model = get_app_setting("gemini_model", company_id, "gemini-3.8-flash")
     api_key = configured_gemini_key()
 
-    summary = build_insight_payload(df, sales_df, inventory_df, start, end)
+    daily_sales = query_df("SELECT date,amount FROM daily_sales WHERE company_id=?", [company_id])
+    summary = build_insight_payload(df, sales_df, inventory_df, start, end, daily_sales=daily_sales)
     with st.expander("Ver resumo que será enviado", expanded=False):
         st.json(summary)
 
@@ -2100,6 +2022,7 @@ def ai_insights_page(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: pd.
         has_data = (
             not scope_df(df, start, end).empty
             or summary["vendas_por_item"] is not None
+            or summary["vendas_diarias"] is not None
             or summary["estoque"] is not None
         )
         if not has_data:

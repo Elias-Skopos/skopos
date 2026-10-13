@@ -1,14 +1,16 @@
 # PostgreSQL local do Skopos
 
+Este documento descreve a **instalação de desenvolvimento nesta pasta**. O instalador Windows 0.1.3 foi gerado em 12/10/2026; usa dados separados em `%LOCALAPPDATA%\Skopos\Data`, nome local configurado na primeira abertura e acesso local/Google via OIDC. Para instalar e publicar essa edição, consulte [PUBLICACAO_WINDOWS.md](PUBLICACAO_WINDOWS.md). Os comandos abaixo não transferem automaticamente esta base para a edição instalada.
+
 Esta instalação usa PostgreSQL 18.6 para Windows x64, em uma pasta privada do projeto. Não depende de serviço de nuvem nem de uma instalação global. O servidor aceita conexões somente de `127.0.0.1:5432`, com autenticação SCRAM por senha. O aplicativo usa `skopos_app`, sem privilégios de superusuário, criação de usuários ou criação de bancos.
 
 ## Abrir e usar
 
-Execute **Iniciar Skopos local.cmd**. O iniciador sobe o PostgreSQL se ele estiver parado, faz um backup e abre o Streamlit local. Se o banco ou o backup falhar, ele interrompe a abertura e mostra uma mensagem. Mantenha o terminal aberto durante o uso; fechar o navegador não encerra o aplicativo. Depois de reiniciar o Windows, use novamente esse iniciador.
+Execute **Iniciar Skopos local.cmd**. O iniciador confere o banco e o retorno do login, verifica se a porta está livre, sobe o PostgreSQL se ele estiver parado e faz um backup. Depois inicia o Streamlit e só abre o navegador quando recebe a resposta de prontidão da instância que acabou de iniciar. Se o login, banco, backup ou servidor falhar, ele interrompe a abertura e mostra uma mensagem. Mantenha o terminal aberto durante o uso; fechar o navegador não encerra o aplicativo. Use Ctrl+C no iniciador para encerrar o app. Depois de reiniciar o Windows, use novamente esse iniciador.
 
 O login Google continua necessário e depende de internet para autenticar. Esta etapa não é o instalador distribuível nem altera o login para funcionamento totalmente offline.
 
-O atalho desktop disponibilizado dentro do app ainda abre a versão hospedada na web. Para esta instalação, use o iniciador local acima.
+O botão de baixar um atalho desktop foi retirado do app. Para esta instalação de desenvolvimento, use o iniciador local acima. O instalador gera os atalhos locais automaticamente. Atalhos antigos chamados `Skopos Online` continuam abrindo a hospedagem.
 
 ## Arquivos privados
 
@@ -62,5 +64,29 @@ Mantenha uma cópia dos backups em outro disco ou local protegido; a cópia nest
 6. Execute `local_postgres.py backup` e `local_postgres.py verify-backup` antes de `local_postgres.py activate`. A ativação preserva os Secrets de autenticação, grava uma cópia anterior e recusa substituir uma conexão diferente já configurada.
 
 `setup` não reinicializa um diretório com dados e não substitui senhas de uma instalação existente. A pasta `.local_postgres/` não deve ser copiada pelo Git para outro computador; cada instalação precisa de preparação própria.
+
+## Preparação para o instalador
+
+`local_paths.py` permite separar os arquivos do programa dos dados persistentes. Sem variáveis adicionais, todos os caminhos acima permanecem iguais. `SKOPOS_DATA_DIR` seleciona outra pasta absoluta para o banco, Secrets e backups; `SKOPOS_POSTGRES_RUNTIME` seleciona a pasta absoluta dos binários `pgsql`. Não use uma nova pasta de dados para abrir esta base sem antes transferir e validar os dados: a configuração não faz essa transferência automaticamente.
+
+A primeira versão será acessada apenas neste computador, com nome local terminado em `.localhost`, conforme definido em 12/10. Esse nome não exige registro de domínio, edição de `hosts` nem DDNS. O servidor continua escutando somente em `127.0.0.1`; o navegador pode mostrar `http://skopos.nome-da-empresa.localhost:8501`. Prefira Chrome ou Edge no Windows para esses subdomínios locais. Outro computador não consegue usar esse endereço para acessar os dados desta instalação.
+
+O nome é uma configuração da instalação, independente da empresa selecionada dentro do app. Para salvar um nome baseado na empresa:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 local_launcher.py configure --company "Livraria São João"
+.\.venv\Scripts\python.exe -X utf8 local_launcher.py check
+```
+
+O nome gerado é `skopos.livraria-sao-joao.localhost`. Também é possível usar `configure --hostname skopos.minha-empresa.localhost --port 8501`. A configuração pública fica em `local_app.json` na pasta de dados, ignorada pelo Git; o arquivo `local_app.json.example` contém um modelo. Nomes públicos, IPs, URLs completas e portas inválidas são recusados.
+
+**No iniciador de desenvolvimento, o nome precisa coincidir com a origem OAuth web.** O Google web desta pasta usa `http://localhost:8501/oauth2callback`; `configure` não altera os Secrets nem o cliente Google. `check` e `start` recusam uma origem diferente. Na edição instalada, o nome personalizado e o acesso duplo já estão implementados com um provedor OIDC local e cliente Google desktop; não use os Secrets web desta pasta como configuração dessa edição.
+Para manter o endereço atual enquanto a autenticação é preparada:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 local_launcher.py configure --hostname localhost --port 8501
+```
+
+O iniciador usa `local_app_server.py` como entrada do Streamlit. O endpoint de prontidão exige um identificador aleatório por execução, sem incluir credenciais; isso evita abrir no navegador outro servidor que ocupe a porta durante a inicialização. O log do app fica em `.local_postgres/app.log`. Este iniciador de desenvolvimento usa Python do projeto e terminal. A edição instalada usa iniciador gráfico, reutilização da instância e atalhos; consulte PUBLICACAO_WINDOWS.md para a entrega piloto e suas verificações pendentes.
 
 Referências: [initdb](https://www.postgresql.org/docs/current/app-initdb.html), [pg_ctl](https://www.postgresql.org/docs/current/app-pg-ctl.html), [pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html), [arquivo de senhas](https://www.postgresql.org/docs/current/libpq-pgpass.html).

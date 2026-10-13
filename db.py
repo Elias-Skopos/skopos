@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
+from local_paths import DATA_ROOT
 
-DB_PATH = Path(__file__).with_name("livraria.db")
+DB_PATH = DATA_ROOT / "livraria.db"
 COMPANY_ROLES = ("administrator", "collaborator")
 EDIT_ROLES = ("administrator",)
 COMPANY_SEGMENTS = ("Livraria", "Padaria", "Bar", "Restaurante", "Comércio", "Serviços", "Outro")
@@ -84,7 +85,9 @@ def _require_role(conn: sqlite3.Connection, company_id: int, issuer: str, subjec
     else:
         conn.execute("UPDATE companies SET id=id WHERE id=?", (company_id,))
         company = conn.execute("SELECT is_demo FROM companies WHERE id=?", (company_id,)).fetchone()
-    if not company or company[0]:
+    if not company:
+        raise PermissionError("A empresa não está disponível ou foi excluída.")
+    if company[0]:
         raise PermissionError("O ambiente de demonstração permite somente consulta.")
     row = conn.execute(
         "SELECT role FROM company_memberships WHERE company_id=? AND issuer=? AND subject=?",
@@ -278,6 +281,12 @@ def init_db() -> None:
                 conn.execute(f"UPDATE {table} SET import_id=? WHERE company_id=? AND import_id IS NULL", (batch, row["company_id"]))
         if "is_demo" not in _columns(conn, "transactions"):
             conn.execute("ALTER TABLE transactions ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0")
+        from autonomy import init_schema
+        init_schema(conn)
+        from company_lifecycle import init_schema as init_company_lifecycle
+        init_company_lifecycle(conn)
+        from local_identity import init_schema as init_identity
+        init_identity(conn)
 
 
 def register_identity(issuer: str, subject: str, email: str = "", name: str = "", email_verified: bool = False) -> None:
@@ -325,6 +334,10 @@ def respond_company_invitation(invitation_id: int, issuer: str, subject: str, ac
         if not getattr(conn, "is_postgres", False):
             conn.execute("BEGIN IMMEDIATE")
         user = conn.execute("SELECT email,email_verified FROM users WHERE issuer=? AND subject=?", (issuer, subject)).fetchone()
+        initial = conn.execute("SELECT company_id FROM company_invitations WHERE id=?", (invitation_id,)).fetchone()
+        if initial and getattr(conn, "is_postgres", False):
+            # Keep the same company-first lock order as team edits/deletion.
+            conn.execute("SELECT id FROM companies WHERE id=? FOR UPDATE", (initial[0],)).fetchone()
         lock = " FOR UPDATE" if getattr(conn, "is_postgres", False) else ""
         invitation = conn.execute("SELECT * FROM company_invitations WHERE id=?" + lock, (invitation_id,)).fetchone()
         if not user or not user["email_verified"] or not invitation or invitation["email"] != user["email"]:
@@ -609,11 +622,12 @@ def add_transaction(data: dict, company_id: int, issuer: str, subject: str) -> N
     with connection() as conn:
         _require_role(conn, company_id, issuer, subject, EDIT_ROLES)
         due = _validate_due_date(data.get("due_date")) if data["status"] == "Pendente" else None
+        payment_date = _validate_due_date(data.get("payment_date") or data["date"]) if data["status"] == "Pago" else None
         conn.execute("""INSERT INTO transactions
-            (company_id, date, kind, category, description, amount, payment_method, status, due_date, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (company_id, date, kind, category, description, amount, payment_method, status, due_date, notes, payment_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (company_id, data["date"], data["kind"], data["category"], data["description"], data["amount"],
-             data["payment_method"], data["status"], due, data.get("notes")))
+             data["payment_method"], data["status"], due, data.get("notes"), payment_date))
 
 
 def _validate_due_date(value: str | None) -> str:
@@ -625,7 +639,7 @@ def _validate_due_date(value: str | None) -> str:
 
 def update_status(
     transaction_id: int, status: str, company_id: int, issuer: str, subject: str,
-    due_date: str | None = None,
+    due_date: str | None = None, payment_date: str | None = None,
 ) -> None:
     with connection() as conn:
         _require_role(conn, company_id, issuer, subject, EDIT_ROLES)
@@ -635,7 +649,8 @@ def update_status(
         if row is None:
             return
         selected_due = _validate_due_date(due_date or row["due_date"]) if status == "Pendente" else row["due_date"]
-        conn.execute("UPDATE transactions SET status=?, due_date=? WHERE id=? AND company_id=?", (status, selected_due, transaction_id, company_id))
+        settled = _validate_due_date(payment_date or date.today().isoformat()) if status == "Pago" else None
+        conn.execute("UPDATE transactions SET status=?, due_date=?, payment_date=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND company_id=?", (status, selected_due, settled, transaction_id, company_id))
 
 
 def delete_transaction(transaction_id: int, company_id: int, issuer: str, subject: str) -> None:

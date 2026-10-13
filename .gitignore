@@ -18,4 +18,11 @@ __pycache__/
 *.db
 .test_tmp/
 .local_postgres/
+.local_auth/
 backups/
+local_app.json
+local_app.json.new
+build/
+dist/
+.build_tools/
+*.spec

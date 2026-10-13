@@ -1,10 +1,12 @@
 """Workspace selection and personal profile, independent of financial screens."""
 import smtplib
+import os
 
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
 
 import db
+import company_lifecycle
 from invitation_email import send_invitation
 
 ROLE_LABELS = {"administrator": "Proprietário", "collaborator": "Colaborador"}
@@ -110,6 +112,12 @@ def company_invitation_form(company_id: int, company_name: str, issuer: str, sub
 
 
 def workspace_picker(companies: list[dict], issuer: str, subject: str, logout) -> None:
+    with st.container(horizontal_alignment="center"):
+        with st.container(width=680, key="workspace_picker_panel"):
+            _workspace_picker_contents(companies, issuer, subject, logout)
+
+
+def _workspace_picker_contents(companies: list[dict], issuer: str, subject: str, logout) -> None:
     st.title("Bem-vindo ao Skopos")
     st.write("Escolha uma empresa ou crie a sua.")
     st.caption(f"Conectado como {st.user.get('email', '')}")
@@ -169,13 +177,71 @@ def workspace_picker(companies: list[dict], issuer: str, subject: str, logout) -
             except (ValueError, PermissionError) as exc:
                 st.error(str(exc))
 
+    company_recovery_panel(issuer, subject)
     st.button("Sair da conta", on_click=logout, key="workspace_logout", icon=":material/logout:")
+
+
+def company_deletion_panel(company: dict, issuer: str, subject: str) -> None:
+    if company.get("role") != "administrator":
+        return
+    company_id = int(company["id"])
+    with st.expander("Excluir empresa", icon=":material/delete:"):
+        st.warning(f"Excluir {company['name']} remove a empresa, seus dados e todos os acessos da área ativa do Skopos.")
+        st.caption("Seu perfil pessoal e as outras empresas serão mantidos. Uma cópia para recuperação será guardada neste banco; somente o proprietário que fizer a exclusão poderá recuperá-la em Empresas e convites.")
+        with st.form(f"company_delete_form_{company_id}", enter_to_submit=False):
+            name = st.text_input("Digite o nome exato da empresa", key=f"company_delete_name_{company_id}", max_chars=120)
+            confirmed = st.checkbox("Confirmo a exclusão desta empresa e entendo que toda a equipe perderá o acesso.",
+                                    key=f"company_delete_confirm_{company_id}")
+            submitted = st.form_submit_button("Excluir empresa", key=f"company_delete_submit_{company_id}")
+        if submitted:
+            try:
+                company_lifecycle.delete_company(company_id, issuer, subject, name, confirmed)
+            except (ValueError, PermissionError) as exc:
+                st.error(str(exc))
+            except Exception:
+                st.error("A exclusão não foi concluída. Os dados da empresa foram preservados; tente novamente ou confira o banco.")
+            else:
+                st.session_state.pop("active_company_id", None)
+                open_workspace_picker()
+                st.session_state["workspace_notice"] = f"{company['name']} foi excluída. A cópia está disponível em Empresas excluídas para recuperação."
+                st.rerun()
+
+
+def company_recovery_panel(issuer: str, subject: str) -> None:
+    backups = company_lifecycle.deleted_companies(issuer, subject)
+    if not backups:
+        return
+    with st.expander("Empresas excluídas", icon=":material/restore:"):
+        st.caption("Cópias das empresas que você excluiu. Elas ficam neste mesmo banco e também entram nos backups do Skopos.")
+        for backup in backups:
+            backup_id = backup["id"]
+            with st.container(border=True):
+                st.subheader(backup["company_name"])
+                st.caption("A recuperação devolve os dados e os acessos da equipe como estavam na exclusão.")
+                with st.form(f"company_restore_form_{backup_id}", enter_to_submit=False):
+                    confirmed = st.checkbox("Confirmo a recuperação dos dados e dos acessos desta empresa.", key=f"company_restore_confirm_{backup_id}")
+                    submitted = st.form_submit_button("Recuperar empresa", key=f"company_restore_submit_{backup_id}")
+                if submitted:
+                    try:
+                        company_id = company_lifecycle.restore_company(backup_id, issuer, subject, confirmed)
+                    except (PermissionError, ValueError) as exc:
+                        st.error(str(exc))
+                    except Exception:
+                        st.error("A recuperação não foi concluída. Nenhum dado foi substituído.")
+                    else:
+                        activate_company(company_id)
+                        st.rerun()
 
 
 def personal_profile(company: dict, issuer: str, subject: str, logout, shortcuts, theme_toggle) -> None:
     st.subheader(st.user.get("name", "") or "Conta Google")
     st.caption(st.user.get("email", ""))
-    st.caption("Nome e e-mail de login são gerenciados na sua conta Google.")
+    if os.environ.get("SKOPOS_DESKTOP") == "1":
+        st.caption("Acesso local e Google podem ser vinculados ao mesmo perfil.")
+        from local_config import load_config
+        st.link_button("Gerenciar senha local e Google", load_config().url + "/identity/account", icon=":material/lock:")
+    else:
+        st.caption("Nome e e-mail de login são gerenciados na sua conta Google.")
     with st.form("personal_profile"):
         name = st.text_input("Como você quer ser chamado", value=db.get_user_setting("display_name", issuer, subject), max_chars=120)
         if st.form_submit_button("Salvar meu perfil", type="primary"):

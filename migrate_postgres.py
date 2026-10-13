@@ -13,8 +13,9 @@ from unittest.mock import patch
 
 import db
 
-TABLES = ("companies", "users", "company_memberships", "company_invitations", "transactions", "budgets", "sales_lines", "inventory_snapshots", "app_settings", "import_batches", "user_settings")
+TABLES = ("companies", "users", "company_memberships", "company_invitations", "transactions", "budgets", "sales_lines", "inventory_snapshots", "app_settings", "import_batches", "user_settings", "input_batches", "daily_sales", "opening_balances", "recurring_expenses", "company_deletion_backups")
 IDENTITY_TABLES = ("companies", "company_invitations", "transactions", "budgets", "sales_lines", "inventory_snapshots")
+TABLES += ("identity_credentials", "identity_codes", "identity_flows", "identity_google_links")
 
 
 def migrate(source: Path, apply: bool = False):
@@ -63,7 +64,8 @@ def migrate(source: Path, apply: bool = False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, default=Path(__file__).with_name("livraria.db"))
+    from local_paths import DATA_ROOT
+    parser.add_argument("--source", type=Path, default=DATA_ROOT / "livraria.db")
     parser.add_argument("--apply", action="store_true", help="Executar a cópia no PostgreSQL vazio; sem este argumento, apenas conferir a origem.")
     args = parser.parse_args()
     try:

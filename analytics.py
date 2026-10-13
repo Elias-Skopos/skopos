@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 import pandas as pd
-from import_contract import validate_format
+from import_contract import validate_format, brazilian_date
 
 
 SALES_COLUMNS = [
@@ -67,6 +67,7 @@ def normalize_sales_frame(frame: pd.DataFrame, *, strict: bool = True) -> tuple[
             ["quantidade", "preco_unitario", "custo_unitario", *SALES_NUMERIC_DEFAULTS], "data")
         if errors:
             return [], errors
+        data["data"] = data["data"].map(brazilian_date)
 
     for name in SALES_COLUMNS:
         if name not in data:
@@ -87,7 +88,7 @@ def normalize_sales_frame(frame: pd.DataFrame, *, strict: bool = True) -> tuple[
     if (data["pedido_id"] == "").any() or (data["sku"] == "").any() or (data["titulo"] == "").any():
         errors.append("Pedido, SKU e título não podem ficar vazios.")
     if data["data"].isna().any():
-        errors.append("Há datas inválidas. Use AAAA-MM-DD ou DD/MM/AAAA.")
+        errors.append("Há datas inválidas. Use DD-MM-AAAA no CSV." if strict else "Há datas inválidas na consulta da API.")
     if data["quantidade"].isna().any() or data["preco_unitario"].isna().any() or data["custo_unitario"].isna().any():
         errors.append("Quantidade, preço unitário e custo unitário precisam ser números válidos.")
     if data[numeric_fields].isna().any().any():
@@ -121,6 +122,7 @@ def normalize_inventory_frame(frame: pd.DataFrame, *, strict: bool = True) -> tu
             ["quantidade", "custo_unitario", "estoque_minimo"], "data_ref")
         if errors:
             return [], errors
+        data["data_ref"] = data["data_ref"].map(brazilian_date)
     if "estoque_minimo" not in data:
         data["estoque_minimo"] = 0
     for name in ["sku", "titulo"]:
@@ -134,7 +136,7 @@ def normalize_inventory_frame(frame: pd.DataFrame, *, strict: bool = True) -> tu
     if (data["sku"] == "").any() or (data["titulo"] == "").any():
         errors.append("SKU e título não podem ficar vazios.")
     if data["data_ref"].isna().any():
-        errors.append("Há datas de inventário inválidas. Use AAAA-MM-DD ou DD/MM/AAAA.")
+        errors.append("Há datas de inventário inválidas. Use DD-MM-AAAA no CSV." if strict else "Há datas de inventário inválidas na consulta da API.")
     if data[numeric_fields].isna().any().any():
         errors.append("Quantidade, custo e estoque mínimo precisam ser números válidos.")
     if (data[numeric_fields] < 0).any().any():

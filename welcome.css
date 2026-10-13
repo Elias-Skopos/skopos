@@ -1,0 +1,85 @@
+[data-testid="stAppViewContainer"] { background: #fff; }
+        [data-testid="stHeader"], [data-testid="stToolbar"], #MainMenu, footer {
+            visibility: hidden; height: 0; min-height: 0;
+        }
+        [data-testid="stMainBlockContainer"] {
+            max-width: none !important; padding: 0 !important; margin: 0 !important;
+        }
+        [data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+        .st-key-login_layout [data-testid="stHorizontalBlock"] {
+            min-height: 100vh; gap: 0 !important; align-items: stretch !important;
+        }
+        .st-key-login_left_panel {
+            display: flex; align-items: center; justify-content: center;
+            padding: clamp(2rem, 5.5vw, 5.5rem); background: #fff;
+        }
+        .st-key-login_right_panel {
+            display: flex; align-items: center; justify-content: center;
+            padding: clamp(2rem, 5vw, 5rem); min-height: 100vh;
+            color: #fff; background: #625fe9; border-radius: 14px 0 0 14px;
+        }
+        .st-key-login_left_panel > div[data-testid="stVerticalBlock"],
+        .st-key-login_right_panel > div[data-testid="stVerticalBlock"] {
+            width: min(100%, 470px); margin: auto; justify-content: center;
+        }
+        .login-left-marker, .login-right-marker { display: none; }
+        .login-brand { display: flex; align-items: center; gap: .65rem; margin-bottom: 2.8rem; color: #171927; }
+        .login-brand-mark { display: grid; place-items: center; width: 2.55rem; height: 2.55rem;
+            border-radius: .85rem; background: #f0efff; font-size: 1.25rem; }
+        .st-key-login_logo_image { width: 100%; margin-bottom: 2.8rem; overflow: visible !important; }
+        .st-key-login_logo_image [data-testid="stImage"],
+        .st-key-login_logo_image [data-testid="stImage"] > div {
+            width: 100% !important; max-width: 420px !important; height: auto !important;
+            overflow: visible !important; border-radius: 0 !important; clip-path: none !important;
+        }
+        .st-key-login_logo_image img {
+            display: block !important; width: 100% !important; height: auto !important;
+            max-width: 420px !important; object-fit: contain !important; object-position: left center !important;
+            border-radius: 0 !important; clip-path: none !important;
+        }
+        .login-brand-name { font-size: 1.3rem; font-weight: 760; letter-spacing: -.04em; }
+        .login-eyebrow { margin-bottom: .7rem; color: #625fe9; font-size: .76rem; font-weight: 750;
+            letter-spacing: .04em; }
+        .st-key-login_left_panel h1 {
+            margin: 0 0 .55rem; color: #171927; font-size: clamp(2.1rem, 3.3vw, 3rem);
+            font-weight: 760; letter-spacing: -.045em;
+        }
+        .login-description { margin-bottom: 1.8rem; color: #73798b; font-size: 1rem; line-height: 1.65; }
+        .st-key-login_left_panel button[kind="primary"] {
+            min-height: 3.35rem; border: 1px solid #625fe9; border-radius: .7rem;
+            color: #fff; background: #625fe9; font-size: .98rem; font-weight: 700;
+            box-shadow: 0 8px 22px rgba(98,95,233,.2); transition: transform .15s ease, background .15s ease;
+        }
+        .st-key-login_left_panel button[kind="primary"]:hover {
+            border-color: #514ed5; background: #514ed5; transform: translateY(-1px);
+        }
+        .login-divider { display: flex; align-items: center; gap: .8rem; margin: 1.55rem 0 1rem;
+            color: #a2a6b2; font-size: .78rem; }
+        .login-divider::before, .login-divider::after { content: ""; flex: 1; height: 1px; background: #e8e9ef; }
+        .login-footnote { color: #9298a6; font-size: .82rem; line-height: 1.6; text-align: center; }
+        .login-notice { padding: .9rem 1rem; border: 1px solid #f2dfb5; border-radius: .7rem;
+            color: #7a5b21; background: #fff9ec; font-size: .9rem; line-height: 1.5; }
+        .login-hero-eyebrow { color: rgba(255,255,255,.74); font-size: .76rem; font-weight: 750;
+            letter-spacing: .14em; text-align: center; text-transform: uppercase; }
+        .st-key-login_right_panel h2 {
+            margin: .6rem 0 .5rem; color: #fff; font-size: clamp(1.8rem, 2.6vw, 2.5rem);
+            font-weight: 740; letter-spacing: -.04em; line-height: 1.2; text-align: center;
+        }
+        .login-hero-copy { max-width: 32rem; margin: 0 auto 1.15rem; color: rgba(255,255,255,.8);
+            font-size: 1rem; line-height: 1.6; text-align: center; }
+        .login-hero-art { display: block; width: min(100%, 38rem); max-height: 25rem; margin: .2rem auto .7rem; }
+        .login-hero-caption { color: rgba(255,255,255,.75); font-size: .83rem; text-align: center; }
+        @media (max-width: 760px) {
+            .st-key-login_layout [data-testid="stHorizontalBlock"] {
+                min-height: 100vh; flex-wrap: wrap !important;
+            }
+            .st-key-login_left_panel { min-height: 72vh; padding: 2rem 1.5rem; }
+            .st-key-login_right_panel {
+                min-height: auto; padding: 2.2rem 1.5rem; border-radius: 14px 14px 0 0;
+            }
+            .st-key-login_left_panel > div[data-testid="stVerticalBlock"] { min-height: 65vh; }
+            .login-brand { margin-bottom: 2rem; }
+            .login-hero-art { max-height: 15rem; }
+        }
