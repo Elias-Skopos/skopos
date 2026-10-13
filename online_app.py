@@ -46,6 +46,8 @@ def render_public():
             if release:
                 st.link_button("Baixar para Windows", release["download_url"], type="primary", icon=":material/download:", width="stretch")
                 st.caption(f"Windows 10/11 · 64 bits · Versão {release['version']}")
+                with st.expander("Conferir o arquivo"):
+                    st.code(release["sha256"], language=None)
             else:
                 st.button("Baixar para Windows", disabled=True, type="primary", icon=":material/download:", width="stretch")
                 st.caption("O instalador está em preparação. O download será liberado após a validação da versão.")

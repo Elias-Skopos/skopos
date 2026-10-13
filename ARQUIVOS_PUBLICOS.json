@@ -5,7 +5,7 @@
   },
   {
     "path": ".streamlit/config.toml",
-    "sha256": "636c7701e0b8e6132ca7d77ec652b54efe8ff98d98eed523a2586e67a905b9f6"
+    "sha256": "7eee589607f4b4569089a450bae9f022e1a5837fdad004e7b1afeb9e97e0d613"
   },
   {
     "path": ".streamlit/secrets.toml.example",
@@ -16,8 +16,12 @@
     "sha256": "365b14a79d3c0c73aa1c3dab94f6f1c4b0c7048fc859363eaa7c97618586543a"
   },
   {
+    "path": "ATUALIZACAO_0_1_5.md",
+    "sha256": "47a349360eb52498bfe6fbd0fa19738d6de028ffcb9a3f855a8a1895e21a4962"
+  },
+  {
     "path": "BACKLOG_INSTALAVEL.md",
-    "sha256": "d2b89f44108752c3d30543aa581c1592936afb5084b6570e5aac0927898a9b4d"
+    "sha256": "2f315a5011ff455a73cc7eac684f0df7f0a72271b4ef94008b619622889aae77"
   },
   {
     "path": "Fazer backup local.cmd",
@@ -37,11 +41,11 @@
   },
   {
     "path": "PUBLICACAO_WINDOWS.md",
-    "sha256": "04054429ab067e1688feff0091d383a9469cfe898988cf99b38e4b5a89a636cf"
+    "sha256": "7026c6946a5dc964b3b1e1f90601ea99a0b0d5f22e86e3ff9d2ef9f30127a895"
   },
   {
     "path": "README.md",
-    "sha256": "1ec4ed93e6fcd9f7b98ed748df68a1574146be9bc3c4d2fa470770fe91ff1326"
+    "sha256": "3e4b196ce314178496fe5ddf834c9605223ecfa73d4a749c82fe4e5b00602902"
   },
   {
     "path": "TERMS_DESKTOP.txt",
@@ -49,7 +53,7 @@
   },
   {
     "path": "account_ui.py",
-    "sha256": "f1453a8907c7d20c6f35e6aa6ba3123c6a063d76642879ba3ed911aab857c9f1"
+    "sha256": "543982d69cd6da32e74339d2772ad4a9b6b5e590dc0253dcf909e249001de889"
   },
   {
     "path": "ai_insights.py",
@@ -84,6 +88,10 @@
     "sha256": "b8e2073260cf825a60d9c4cfe0d00fb8c4a787eadb353a4fe6d4f7dacb604637"
   },
   {
+    "path": "assets/logo_barra_lateral_dark.svg",
+    "sha256": "28723640654ec3d9c17af8d766f6d0893aa6f2da2fddae2f571c231513a02a3a"
+  },
+  {
     "path": "assets/logo_login.png",
     "sha256": "d8436661a93f9cef6b4c6cec726992bbbdaab15ed81923fac694fe4a0b75df7c"
   },
@@ -109,7 +117,7 @@
   },
   {
     "path": "build_installer.py",
-    "sha256": "420d55e80cbb381525444208592297e5a29b4eef986ad0910e63d404a96b584f"
+    "sha256": "2b677eb3fbb395c1c447edc51e7ea9ea7cd47655873a281e2942fb597c32a38d"
   },
   {
     "path": "company_lifecycle.py",
@@ -125,15 +133,15 @@
   },
   {
     "path": "demo_ui.py",
-    "sha256": "3a73719b5e4e2b4b3466dac37ff7cc201677361c05eab3957a985be2a37fb0c3"
+    "sha256": "0bc32c17148256ebf810be0396d57c48ad02dca5ca09583686b4100eea9477b8"
   },
   {
     "path": "desktop_defaults.json",
-    "sha256": "cd6397cfc986647e4e486b1799cfae2f2e835c21f565e88fd54116fcff249c0e"
+    "sha256": "bfce16a8b9a370bd3562145707ea6ceca8b13f88f5b696859a2f47503edaf28c"
   },
   {
     "path": "desktop_entry.py",
-    "sha256": "7081a0d7eb9a70503bcd8c72dcbc33d592acafbb516ed35d777d394880036d3c"
+    "sha256": "1629ae84fcfc1eb30efcbdd1d5b0c6fd285552ceaf229dd69cf31aa89057617a"
   },
   {
     "path": "desktop_google.py",
@@ -141,15 +149,19 @@
   },
   {
     "path": "desktop_setup.py",
-    "sha256": "93730ba0c9b5a233ad50baf794f6e4da005ef4fe8eb5514ef27d9fdda9783bf8"
+    "sha256": "01ee29cdd2a6a6ff1caa3d0a3f8e01d4397b2ddcd247a60d79c98d181ec7419b"
   },
   {
     "path": "desktop_smoke.py",
-    "sha256": "ec1ec15e7e6f43c86f39bbfd1f93fb4c5e5b14aecb80c433be92af58c7f820ff"
+    "sha256": "a536d6bbcb33f8ebb246627638a0c5a50cabf215f0b40861b31baccb91b60e6c"
+  },
+  {
+    "path": "desktop_window.py",
+    "sha256": "b8c377c635b1e61e147c1f3c417af713eb12c0c3575cf4af07c69a218b557962"
   },
   {
     "path": "export_sources.py",
-    "sha256": "25f2966968ab3ce12896d66e4ea6ddb2ab53f3d4946fc6933dc0dc887c3e05e9"
+    "sha256": "4599233096475b3f5fe187f5f00339e706b0c368dd4ee8e8f335bff58504837b"
   },
   {
     "path": "home_finance.py",
@@ -169,7 +181,7 @@
   },
   {
     "path": "installer/skopos.iss",
-    "sha256": "96a150e15f331f0161167cadf0a80aede5d3cbc86119a3fa17ed5818b4337645"
+    "sha256": "61eff3112913b92f0c051e646cfe86f45e1acb803aef7ad17bf88c6e18a523cc"
   },
   {
     "path": "invitation_email.py",
@@ -193,11 +205,11 @@
   },
   {
     "path": "local_launcher.py",
-    "sha256": "e85d2d74445ed2a28149e1365d0ff998f88c2c8ab3c7d058801dc965b9e5932b"
+    "sha256": "81caefa56b745193f3ff2f8dd926160f5e2652dff667e6ac777f17b94e6c789e"
   },
   {
     "path": "local_oidc.py",
-    "sha256": "7631e39e4d34641fef91722913706bdcd3ed5f0e0067ce7bd0f1897ebb531b79"
+    "sha256": "44285b0c9e669d503c0c42e0aa93ee537a5f7aa5f176cea7f39b28a8e7419398"
   },
   {
     "path": "local_paths.py",
@@ -225,11 +237,11 @@
   },
   {
     "path": "requirements-desktop.lock",
-    "sha256": "9851501f133d1a4580be8485c9a19551a569a0522f600887da13cbdb7232aa11"
+    "sha256": "489e0ce925db94bca57ead6e13dd75b6bcd6cf7348b718cd30500730d9788775"
   },
   {
     "path": "requirements.txt",
-    "sha256": "d66fb166cd1baf18ed4cbc93e7898e272cef2de4675fb41858b7e700fe17583a"
+    "sha256": "57b4836822d1c77af400f539a4502946192f33cf9e05fbcfcbe9fde07484e901"
   },
   {
     "path": "tests/test_account_flow.py",
@@ -246,6 +258,10 @@
   {
     "path": "tests/test_desktop_google.py",
     "sha256": "dc8d2305567aaa7c715d6c272db508f2c6b1eb4b5fe0d0874be31d088f8b0294"
+  },
+  {
+    "path": "tests/test_desktop_window.py",
+    "sha256": "1b3f801dbd485dfbd75bce865014581e6672bf79f934f4ff41de2fbffa3f7bab"
   },
   {
     "path": "tests/test_home_finance.py",
@@ -273,7 +289,7 @@
   },
   {
     "path": "tests/test_public_desktop.py",
-    "sha256": "a81bdd138450a5bc4734d28d45249f6fa88e92237d15afe3ce0dfcb918eda78f"
+    "sha256": "b99d244eb647f95dd7ba4c8512f6b09d254642b275f28db3f835782f087ce656"
   },
   {
     "path": "tests/test_regressions.py",
@@ -281,7 +297,7 @@
   },
   {
     "path": "ui.py",
-    "sha256": "b2f49692df142c25f7c8088cc2310dd914770a97b3a0c191ef49a5de43a74489"
+    "sha256": "36817e5282f80921653f2e156650c621b8d669a947573a0c6c96d96cfab52f31"
   },
   {
     "path": "welcome.css",

@@ -1,10 +1,12 @@
 # Backlog — Skopos instalável
 
-Atualizado em 12/10/2026. Não há execução automática nem publicação externa realizada.
+Atualizado em 13/10/2026. Não há execução automática nem publicação externa realizada.
 
 ## Objetivo e decisões
 
-Distribuir o Skopos para Windows 10/11 x64, com Python e PostgreSQL privados no pacote. Acesso somente no computador instalado, no navegador do sistema; instalação por usuário, sem exigir um terminal aberto. Endereço configurado no primeiro uso, como `skopos.empresa.localhost`, sem domínio registrado ou DDNS. Senha local e Google podem ser vinculados ao mesmo perfil; senhas e dados não são sincronizados entre computadores.
+Distribuir o Skopos para Windows 10/11 x64, com Python e PostgreSQL privados no pacote. Acesso somente no computador instalado, em janela própria com pywebview/WebView2; instalação por usuário, sem exigir um terminal aberto. Endereço configurado no primeiro uso, como `skopos.empresa.localhost`, sem domínio registrado ou DDNS. Senha local e Google podem ser vinculados ao mesmo perfil; senhas e dados não são sincronizados entre computadores.
+
+Atualização 0.1.5: janela única implementada, comandos auxiliares ocultos e contraste da demo corrigido. O navegador é usado somente para autenticação Google e links externos. Consulte [ATUALIZACAO_0_1_5.md](ATUALIZACAO_0_1_5.md) para os testes e limites atuais; itens referentes à abertura no navegador abaixo descrevem versões anteriores.
 
 A página online apresenta o produto, permite baixar o instalador e oferece demonstração anônima com dados fictícios. O visual reutiliza a página de login atual. A publicação será manual no repositório Elias-Skopos/skopos e nas suas Releases.
 

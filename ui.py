@@ -4,6 +4,7 @@ import re
 import streamlit as st
 
 CHART_COLORS = ["#625fe9", "#9b7be8", "#4d8df5", "#36a3c7", "#177245", "#e4a11b", "#8b93a1"]
+DARK_CHART_COLORS = ["#8b87ff", "#b59aef", "#6ba4ff", "#58b9d9", "#67ce96", "#efbd53", "#a8b2c1"]
 
 
 def inject_css(dark_mode: bool = False) -> None:
@@ -427,7 +428,7 @@ def render_plotly(fig) -> None:
     text = "#edf1f7" if dark else "#17191f"
     grid = "#354154" if dark else "#e4e5f5"
     fig.update_layout(template="plotly_dark" if dark else "plotly_white",
-                      colorway=CHART_COLORS,
+                      colorway=DARK_CHART_COLORS if dark else CHART_COLORS,
                       paper_bgcolor=background, plot_bgcolor=background,
                       font_color=text, hoverlabel=dict(bgcolor=background, font_color=text))
     fig.update_xaxes(gridcolor=grid, zerolinecolor=grid)

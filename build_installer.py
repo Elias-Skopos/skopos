@@ -16,7 +16,7 @@ MODULES = ("app.py", "account_ui.py", "ai_insights.py", "analytics.py", "autonom
            "local_app_server.py", "local_config.py", "local_identity.py", "local_oidc.py", "local_paths.py",
            "local_postgres.py", "local_launcher.py", "desktop_setup.py", "postgres_backend.py", "ui.py",
            "online_app.py", "welcome_ui.py", "demo_data.py", "demo_ui.py", "migrate_postgres.py",
-           "home_finance.py", "home_finance_ui.py", "desktop_smoke.py", "desktop_google.py")
+           "home_finance.py", "home_finance_ui.py", "desktop_smoke.py", "desktop_google.py", "desktop_window.py")
 DATA_FILES = (*MODULES, "app_chrome.css", "welcome.css", "desktop_defaults.json", "public_release.json", "TERMS_DESKTOP.txt")
 
 
@@ -91,7 +91,7 @@ def main():
                "--distpath", str(ROOT / "dist/runtime"), "--workpath", str(ROOT / "build/pyinstaller"),
                "--specpath", str(ROOT / "build"), "--icon", str(ROOT / "assets/skopos_desktop_novo.ico"),
                "--collect-all", "streamlit", "--collect-all", "plotly", "--collect-all", "authlib",
-               "--collect-data", "altair", "--copy-metadata", "Flask", "--hidden-import", "local_oidc",
+               "--collect-all", "webview", "--collect-data", "altair", "--copy-metadata", "Flask", "--hidden-import", "local_oidc",
                "--hidden-import", "psycopg_binary", "--hidden-import", "argon2", "--hidden-import", "PIL.ImageOps"]
     for name in DATA_FILES:
         command.extend(["--add-data", f"{ROOT/name}:."])

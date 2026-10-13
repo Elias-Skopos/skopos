@@ -15,7 +15,7 @@ from authlib.integrations.requests_client import OAuth2Session
 from authlib.oauth2.rfc6749 import AuthorizationCodeMixin, ClientMixin, grants
 from authlib.oauth2.rfc7636 import CodeChallenge
 from authlib.oidc.core.grants import OpenIDCode
-from flask import Flask, abort, jsonify, redirect, render_template_string, request, session, send_file
+from flask import Flask, abort, jsonify, redirect, render_template_string, request, session, send_file, g
 from joserfc.jwk import RSAKey, KeySet
 from joserfc import jwt
 from joserfc.jwt import JWTClaimsRegistry
@@ -46,12 +46,31 @@ a{color:#514ed5}.secondary{background:#efeeff;color:#514ed5}.error{background:#e
 <button>{{ 'Criar perfil local' if mode == 'register' else 'Salvar senha local' if mode == 'password' else 'Entrar' }}</button></form>
 {% if mode == 'login' %}<a class="button secondary" href="{{ issuer }}/register">Criar perfil local</a>
 {% if google_enabled %}<a class="button secondary" href="{{ issuer }}/google/start">Continuar com Google</a>{% endif %}
-{% if google_pending %}<p class="small">Para usar Google, clique em Configurar Google: importar JSON na janela do iniciador. Use as credenciais de Aplicativo para computador e reabra o Skopos.</p>{% endif %}
+{% if google_pending %}<p class="small">Para usar Google, use o menu Skopos → Configurar Google. Use as credenciais de Aplicativo para computador e reabra o Skopos.</p>{% endif %}
 {% endif %}
 {% if mode == 'password' %}{% if google_enabled %}<a class="button secondary" href="{{ issuer }}/google/start?link=1">Vincular ou confirmar Google</a>{% endif %}<a class="button secondary" href="{{ home }}">Voltar ao Skopos</a>{% endif %}
 <p class="small">A senha local pertence ao Skopos e é independente da senha do Google. Seus dados ficam neste computador.</p>
 </div></section><section class="right"><h2>Sua empresa em equilíbrio.</h2><p>Faturamento, caixa e estoque em um só lugar.</p>
 <img class="art" src="{{ issuer }}/assets/login_illustration.svg" alt="Ilustração Skopos"></section></div></body></html>'''
+
+GOOGLE_WAIT = '''<!doctype html><html lang="pt-BR"><meta charset="utf-8">
+<title>Skopos · Google</title><style>body{font:18px system-ui;background:#f8f8ff;color:#171927;
+margin:10vh auto;max-width:560px;padding:24px}a{color:#514ed5}p{line-height:1.6}</style>
+<h1>Continue no Google</h1><p id="status">Conclua o acesso no navegador. Esta janela continuará automaticamente.</p>
+<a href="{{ issuer }}/google/start">Tentar novamente</a> · <a href="{{ home }}">Voltar ao Skopos</a>
+<script nonce="{{ nonce }}">
+let opened=false, attempts=0;
+async function openGoogle(){if(opened)return;opened=true;
+ if(!await window.pywebview.api.open_google({{ url|tojson }})){
+ document.getElementById('status').textContent='Não foi possível abrir o navegador. Tente novamente.';}}
+window.addEventListener('pywebviewready',openGoogle);
+if(window.pywebview?.api)openGoogle();
+async function poll(){try{const r=await fetch({{ poll_url|tojson }},{credentials:'same-origin'});
+ const data=await r.json();if(data.complete){location.replace(data.complete);return;}
+ if(data.error){document.getElementById('status').textContent=data.error;return;}}
+ catch(e){} if(++attempts<300)setTimeout(poll,1000);else
+ document.getElementById('status').textContent='O acesso expirou. Tente novamente.';}poll();
+</script></html>'''
 
 
 def create_provider(settings, key_path: Path):
@@ -148,6 +167,8 @@ def create_provider(settings, key_path: Path):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; frame-ancestors 'none'; form-action 'self'"
+        if getattr(g, "script_nonce", None):
+            response.headers["Content-Security-Policy"] += f"; script-src 'nonce-{g.script_nonce}'"
         return response
 
     @app.get("/.well-known/openid-configuration")
@@ -238,7 +259,7 @@ def create_provider(settings, key_path: Path):
     def google_start():
         google_client = settings.get("google_client_id")
         if not google_client or not settings.get("google_client_secret"):
-            return display("login", "Configure o Google na janela do iniciador: importe o JSON do cliente Aplicativo para computador e reabra o Skopos. Código G00."), 400
+            return display("login", "Configure o Google no menu Skopos → Configurar Google: importe o JSON do cliente Aplicativo para computador e reabra o Skopos. Código G00."), 400
         verifier, nonce = secrets.token_urlsafe(48), secrets.token_urlsafe(32)
         browser = session.setdefault("browser", secrets.token_urlsafe(32))
         target = current() if request.args.get("link") == "1" else None
@@ -247,14 +268,41 @@ def create_provider(settings, key_path: Path):
         redirect_uri = api+"/google/callback"
         client = OAuth2Session(google_client, redirect_uri=redirect_uri, scope="openid email profile", code_challenge_method="S256")
         url, state = client.create_authorization_url("https://accounts.google.com/o/oauth2/v2/auth", code_verifier=verifier, nonce=nonce, prompt="select_account")
-        identities.save_state("identity_flows", state, {"verifier":verifier, "nonce":nonce, "browser":identities.digest(browser),
-                            "target":target, "authorization":session.get("authorization"), "redirect_uri":redirect_uri})
+        payload = {"verifier":verifier, "nonce":nonce, "browser":identities.digest(browser),
+                   "target":target, "authorization":session.get("authorization"), "redirect_uri":redirect_uri}
+        desktop = "SkoposDesktop/" in request.headers.get("User-Agent", "")
+        if desktop:
+            payload["desktop_result"] = secrets.token_urlsafe(48)
+            session["desktop_result"] = payload["desktop_result"]
+        identities.save_state("identity_flows", state, payload)
+        if desktop:
+            g.script_nonce = secrets.token_urlsafe(24)
+            return render_template_string(GOOGLE_WAIT, issuer=issuer, home=home, url=url,
+                                          nonce=g.script_nonce, poll_url=issuer+"/google/poll")
         return redirect(url)
+
+    @app.get("/google/poll")
+    def google_poll():
+        key = session.get("desktop_result")
+        if not key:
+            abort(400)
+        payload = identities.consume_state("identity_flows", key)
+        if not payload:
+            return jsonify(pending=True)
+        session.pop("desktop_result", None)
+        if not hmac.compare_digest(payload.get("browser", ""), identities.digest(session.get("browser", ""))):
+            abort(400)
+        if payload.get("error"):
+            return jsonify(error=payload["error"])
+        return jsonify(complete=issuer+"/google/complete?"+urlencode({"ticket":payload["ticket"]}))
 
     @app.get("/google/callback")
     def google_callback():
         payload = identities.consume_state("identity_flows", request.args.get("state", ""))
         if not payload or request.args.get("error") or not request.args.get("code"):
+            if payload and payload.get("desktop_result"):
+                identities.save_state("identity_flows", payload["desktop_result"],
+                                      {"browser":payload["browser"], "error":"O acesso Google foi cancelado. Tente novamente."}, ttl=60)
             return "O acesso Google expirou ou foi cancelado. Volte ao Skopos.", 400
         stage = "token"
         try:
@@ -276,11 +324,15 @@ def create_provider(settings, key_path: Path):
             stage = "completion"
             payload["claims"] = dict(claims)
             identities.save_state("identity_flows", ticket, payload, ttl=60)
+            if payload.get("desktop_result"):
+                identities.save_state("identity_flows", payload["desktop_result"],
+                                      {"browser":payload["browser"], "ticket":ticket}, ttl=60)
+                return "<!doctype html><meta charset='utf-8'><title>Skopos</title><p>Acesso confirmado. Volte à janela do Skopos. Você pode fechar esta guia.</p>"
             return redirect(issuer+"/google/complete?"+urlencode({"ticket":ticket}))
         except Exception as exc:
             oauth_error = getattr(exc, "error", None)
             if oauth_error in ("invalid_client", "invalid_request", "unauthorized_client"):
-                code, message = "G01", "O Google recusou a configuração do cliente. Importe novamente o JSON correto na janela do iniciador e reabra o Skopos."
+                code, message = "G01", "O Google recusou a configuração do cliente. Importe novamente o JSON correto no menu Skopos → Configurar Google e reabra o Skopos."
             elif oauth_error == "invalid_grant":
                 code, message = "G02", "A autorização Google expirou ou já foi usada. Volte ao Skopos e comece um novo login."
             elif isinstance(exc, requests.RequestException):
@@ -291,6 +343,9 @@ def create_provider(settings, key_path: Path):
                 code, message = "G05", "Não foi possível concluir a validação Google. Volte ao Skopos e tente novamente."
             # Controlled codes only: never log exception bodies, tokens, or credentials.
             app.logger.warning("google_login_failed code=%s stage=%s", code, stage)
+            if payload.get("desktop_result"):
+                identities.save_state("identity_flows", payload["desktop_result"],
+                                      {"browser":payload["browser"], "error":f"{message} Código {code}."}, ttl=60)
             return f"{message} Código {code}.", 400
 
     @app.get("/google/complete")

@@ -1,5 +1,7 @@
 # Publicação manual — Skopos 0.1.3 para Windows
 
+**Atualização atual: 0.1.5.** A janela própria, a correção do modo escuro da demo e os pacotes atuais estão descritos em [ATUALIZACAO_0_1_5.md](ATUALIZACAO_0_1_5.md). As instruções e checksums de 0.1.3 e 0.1.4 abaixo são históricos.
+
 **Candidato 0.1.4 compilado, com validação pendente:** o novo cliente Google, a inclusão automática do JSON e o checksum atual estão descritos em [ATUALIZACAO_0_1_4.md](ATUALIZACAO_0_1_4.md). Os nomes, checksums e testes abaixo são da entrega anterior 0.1.3 e não devem ser usados para publicar a atualização.
 
 Entrega piloto preparada em 12/10/2026. Repositório: https://github.com/Elias-Skopos/skopos.

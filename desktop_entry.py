@@ -3,9 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
-import queue
 import sys
-import threading
 import time
 
 
@@ -15,7 +13,7 @@ def configure_environment(data_dir=None):
     if not target.is_absolute():
         raise ValueError("A pasta de dados deve ser absoluta.")
     os.environ["SKOPOS_DATA_DIR"] = str(target.resolve())
-    os.environ["SKOPOS_POSTGRES_RUNTIME"] = str(root / "postgres/pgsql")
+    os.environ["SKOPOS_POSTGRES_RUNTIME"] = str(root / "postgres/pgsql" if getattr(sys, "frozen", False) else root / ".local_postgres/runtime/pgsql")
     os.environ["SKOPOS_DESKTOP"] = "1"
     # Frozen paths lack "site-packages", so Streamlit otherwise infers dev mode.
     # Set this before the first Streamlit import in both parent and server child.
@@ -45,7 +43,6 @@ class InstanceLock:
 def reopen_existing(data_dir):
     from local_config import load_config
     from urllib.request import Request, build_opener, ProxyHandler
-    import webbrowser
     path = data_dir / ".runtime/running.json"
     for _ in range(120):
         try:
@@ -56,7 +53,7 @@ def reopen_existing(data_dir):
             req = Request(f"http://127.0.0.1:{config.port}/_skopos/health", headers={"X-Skopos-Instance":state["token"]})
             with build_opener(ProxyHandler({})).open(req, timeout=1) as response:
                 if response.status == 200 and response.read(32).strip() == b"ok":
-                    webbrowser.open(config.url, new=0)
+                    (data_dir / ".runtime/activate").touch()
                     return
         except Exception:
             time.sleep(0.25)
@@ -64,13 +61,8 @@ def reopen_existing(data_dir):
 
 
 def run_window(data_dir):
-    import tkinter as tk
-    from tkinter import ttk, messagebox, filedialog
-    from desktop_setup import setup, protect_data_directory
-    from local_config import CONFIG_PATH
-    from local_paths import APP_ROOT
-    import local_postgres
-    from local_launcher import launch
+    from desktop_setup import protect_data_directory
+    from desktop_window import run_desktop
 
     protect_data_directory()
     lock = InstanceLock(data_dir / ".runtime/instance.lock")
@@ -78,109 +70,11 @@ def run_window(data_dir):
         lock.close()
         reopen_existing(data_dir)
         return
-    events = queue.Queue()
-    stop = threading.Event()
-    window = tk.Tk()
-    window.title("Skopos")
-    window.geometry("520x460")
-    window.configure(background="#f8f8ff")
-    window.resizable(False, False)
-    window.iconbitmap(str(APP_ROOT / "assets/skopos_desktop_novo.ico"))
-    style = ttk.Style()
-    style.configure("TFrame", background="#f8f8ff")
-    style.configure("TLabel", background="#f8f8ff", foreground="#171927", font=("Segoe UI", 10))
-    frame = ttk.Frame(window, padding=25)
-    frame.pack(fill="both", expand=True)
-    ttk.Label(frame, text="Skopos", font=("Segoe UI", 23, "bold")).pack(anchor="w")
-    status = tk.StringVar(value="Preparando sua instalação local...")
-    ttk.Label(frame, textvariable=status, wraplength=435).pack(anchor="w", pady=18)
-    company = tk.StringVar(value="Minha empresa")
-    first = not CONFIG_PATH.exists()
-    if first:
-        ttk.Label(frame, text="Nome da empresa para o endereço local").pack(anchor="w")
-        ttk.Entry(frame, textvariable=company, width=48).pack(fill="x", pady=7)
-
-    def ready(config, token):
-        path = data_dir / ".runtime/running.json"
-        path.write_text(json.dumps({"url":config.url, "token":token}), encoding="utf-8")
-        events.put(("ready", config.url))
-
-    def worker(chosen_name):
-        try:
-            config = setup(chosen_name)
-            launch(config, on_ready=ready, stop_event=stop)
-        except Exception as exc:
-            # No raw third-party tracebacks containing credentials in UI.
-            safe = str(exc) if isinstance(exc, (ValueError, RuntimeError)) else "Não foi possível iniciar. Confira os arquivos de diagnóstico da instalação."
-            events.put(("error", safe))
-        finally:
-            events.put(("finished", ""))
-    thread = None
-    def begin():
-        nonlocal thread
-        if thread:
-            return
-        start_button.configure(state="disabled")
-        status.set("Preparando banco e acesso. Isso pode levar alguns minutos na primeira abertura.")
-        thread = threading.Thread(target=worker, args=(company.get(),), daemon=False)
-        thread.start()
-    start_button = ttk.Button(frame, text="Preparar e abrir" if first else "Abrir Skopos", command=begin)
-    start_button.pack(anchor="w", pady=10)
-    def import_google():
-        path = filedialog.askopenfilename(title="JSON do cliente Google para computador", filetypes=[("Credenciais JSON", "*.json")])
-        if not path:
-            return
-        try:
-            from desktop_google import import_credentials
-            import_credentials(path)
-            messagebox.showinfo("Google configurado", "Configuração Google salva nesta instalação. Se o aplicativo já estiver aberto, clique em Encerrar Skopos e abra novamente pelo atalho.")
-        except ValueError as exc:
-            messagebox.showerror("Configuração Google", str(exc))
-        except OSError:
-            messagebox.showerror("Configuração Google", "Não foi possível salvar o arquivo privado. Confira o acesso à pasta de dados.")
-    from desktop_google import BUNDLED_CLIENT_FILE
-    google_included = BUNDLED_CLIENT_FILE.is_file()
-    google_button = "Alterar configuração Google" if google_included else "Configurar Google: importar JSON"
-    google_message = (
-        "A configuração Google já está incluída. Você também pode entrar com sua senha local."
-        if google_included else
-        "Use o JSON do cliente Aplicativo para computador. A senha local funciona sem essa configuração."
-    )
-    ttk.Button(frame, text=google_button, command=import_google).pack(anchor="w", pady=7)
-    ttk.Label(frame, text=google_message, wraplength=450).pack(anchor="w", pady=5)
-    def close():
-        stop.set()
-        status.set("Encerrando o aplicativo com segurança...")
-        if thread and thread.is_alive():
-            window.after(150, close)
-            return
-        # This exact data directory belongs to this installed edition.
-        if local_postgres.SETTINGS.exists():
-            try:
-                local_postgres.run_binary("pg_ctl", ["-D", str(local_postgres.DATA), "-m", "fast", "-w", "stop"])
-            except Exception:
-                pass
+    try:
+        run_desktop(data_dir)
+    finally:
         (data_dir / ".runtime/running.json").unlink(missing_ok=True)
         lock.close()
-        window.destroy()
-    window.protocol("WM_DELETE_WINDOW", close)
-    ttk.Button(frame, text="Encerrar Skopos", command=close).pack(anchor="w")
-    def poll():
-        try:
-            while True:
-                kind, message = events.get_nowait()
-                if kind == "ready":
-                    status.set("Aplicativo aberto no navegador:\n"+message+"\n\nMantenha esta janela aberta durante o uso.")
-                elif kind == "error":
-                    status.set(message)
-                    messagebox.showerror("Skopos", message)
-        except queue.Empty:
-            pass
-        window.after(200, poll)
-    poll()
-    if not first:
-        window.after(100, begin)
-    window.mainloop()
 
 
 def main():

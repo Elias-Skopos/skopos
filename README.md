@@ -4,11 +4,11 @@ Aplicativo em Python, Streamlit, SQLite local e PostgreSQL externo para acompanh
 
 Endereço publicado: [skopos.streamlit.app](https://skopos.streamlit.app/).
 
-Documentação atualizada em 12/10/2026. As mudanças locais precisam ser enviadas ao GitHub para chegar à versão publicada.
+Documentação atualizada em 13/10/2026. As mudanças locais precisam ser enviadas ao GitHub para chegar à versão publicada.
 
 ## Instalador Windows e site público
 
-O candidato **0.1.4** foi compilado com o novo cliente Google e JSON incluído automaticamente, além do atalho que inicia a aplicação web local no navegador padrão. Consulte [ATUALIZACAO_0_1_4.md](ATUALIZACAO_0_1_4.md). A validação dessa atualização está pendente; os resultados da versão 0.1.3 abaixo são históricos.
+O candidato **0.1.5** abre o painel em uma janela própria com pywebview/WebView2, oculta os comandos auxiliares da inicialização e corrige as cores da demo no modo escuro. Fechar a janela encerra a execução local; abrir novamente o atalho reativa a janela existente. Consulte [ATUALIZACAO_0_1_5.md](ATUALIZACAO_0_1_5.md) para atualização e validação. Os resultados das versões anteriores abaixo são históricos.
 
 O piloto **0.1.3** foi compilado com Python e PostgreSQL no pacote, instalação por usuário e atalhos locais. O site público oferece download e demonstração com números fictícios, sem conta, usando o visual do login atual. A publicação será manual; o download está desativado até a Release existir. Consulte [PUBLICACAO_WINDOWS.md](PUBLICACAO_WINDOWS.md) para os arquivos, checksum, publicação, primeiro uso e limites dos testes.
 
@@ -59,7 +59,7 @@ O planejamento da versão instalável está em [BACKLOG_INSTALAVEL.md](BACKLOG_I
 
 Os caminhos persistentes são centralizados em `local_paths.py`. Sem configuração adicional, este projeto continua usando suas pastas atuais. A edição instalada fornece `SKOPOS_DATA_DIR` (pasta absoluta dos dados, Secrets e backups) e `SKOPOS_POSTGRES_RUNTIME` (binários `pgsql`, contendo `bin/`, `lib/` e `share/`), prepara permissões e carrega os Secrets da pasta de dados. Essas opções não copiam nem migram um banco existente.
 
-`local_launcher.py` prepara o banco, valida a configuração e abre o navegador após a prontidão do servidor. Na edição instalada, o nome configurável segue `skopos.nome-da-empresa.localhost:8501`, com acesso somente neste computador e autenticação local OIDC. O iniciador de desenvolvimento continua usando o Google web e exige a origem configurada nos Secrets. Consulte [POSTGRESQL_LOCAL.md](POSTGRESQL_LOCAL.md) para manutenção dessa instalação de desenvolvimento.
+`local_launcher.py` prepara o banco, valida a configuração e aguarda a prontidão do servidor. Na edição instalada, `desktop_window.py` carrega o painel em sua própria janela e controla o encerramento. O nome configurável segue `skopos.nome-da-empresa.localhost:8501`, com acesso somente neste computador e autenticação local OIDC. O iniciador de desenvolvimento pelo `.cmd` continua abrindo o navegador, usando o Google web e exigindo a origem configurada nos Secrets. Consulte [POSTGRESQL_LOCAL.md](POSTGRESQL_LOCAL.md) para manutenção dessa instalação de desenvolvimento.
 
 ### Os três blocos financeiros da Home
 

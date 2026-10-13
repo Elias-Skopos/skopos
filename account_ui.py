@@ -238,8 +238,9 @@ def personal_profile(company: dict, issuer: str, subject: str, logout, shortcuts
     st.caption(st.user.get("email", ""))
     if os.environ.get("SKOPOS_DESKTOP") == "1":
         st.caption("Acesso local e Google podem ser vinculados ao mesmo perfil.")
-        from local_config import load_config
-        st.link_button("Gerenciar senha local e Google", load_config().url + "/identity/account", icon=":material/lock:")
+        # link_button always opens a new tab. Keep local identity management
+        # in the embedded window so it retains that window's login cookie.
+        st.html('<a href="/identity/account" target="_self">Gerenciar senha local e Google</a>')
     else:
         st.caption("Nome e e-mail de login são gerenciados na sua conta Google.")
     with st.form("personal_profile"):

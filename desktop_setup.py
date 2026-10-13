@@ -21,7 +21,8 @@ KEY_PATH = DATA_ROOT / ".local_auth/signing-key.pem"
 def protect_data_directory():
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
     if os.name == "nt":
-        result = subprocess.run(["whoami", "/user", "/fo", "csv", "/nh"], capture_output=True, text=True, check=True)
+        result = subprocess.run(["whoami", "/user", "/fo", "csv", "/nh"], capture_output=True, text=True, check=True,
+                                stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
         sid = next(csv.reader([result.stdout.strip()]))[1]
         subprocess.run(["icacls", str(DATA_ROOT), "/inheritance:r", "/grant:r",
                         f"*{sid}:(OI)(CI)F", "*S-1-5-18:(OI)(CI)F"],

@@ -95,7 +95,7 @@ def wait_ready(process: subprocess.Popen, port: int, token: str, timeout: float 
     raise RuntimeError("O aplicativo não ficou pronto a tempo. Consulte .local_postgres/app.log.")
 
 
-def launch(config: LocalConfig, on_ready=None, stop_event=None) -> int:
+def launch(config: LocalConfig, on_ready=None, stop_event=None, *, open_browser: bool = True) -> int:
     import local_postgres
 
     preflight(config)
@@ -117,12 +117,15 @@ def launch(config: LocalConfig, on_ready=None, stop_event=None) -> int:
                                        env=environment, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
             wait_ready(process, config.port, token)
+            if stop_event is not None and stop_event.is_set():
+                return 0
             if on_ready:
                 on_ready(config, token)
-            print(f"Skopos pronto em {config.url}")
-            if not webbrowser.open(config.url, new=0):
-                print("Abra o endereço acima no Chrome ou Edge.")
-            print("Fechar a guia não encerra o aplicativo. Use Ctrl+C neste iniciador para encerrar.")
+            if open_browser:
+                print(f"Skopos pronto em {config.url}")
+                if not webbrowser.open(config.url, new=0):
+                    print("Abra o endereço acima no Chrome ou Edge.")
+                print("Fechar a guia não encerra o aplicativo. Use Ctrl+C neste iniciador para encerrar.")
             if stop_event is None:
                 return process.wait()
             while process.poll() is None and not stop_event.wait(0.25):
