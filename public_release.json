@@ -1,6 +1,6 @@
 {
-  "version": "0.1.4",
-  "published": false,
-  "download_url": "",
-  "sha256": ""
+  "version": "0.1.6",
+  "published": true,
+  "download_url": "https://github.com/Elias-Skopos/skopos/releases/download/v0.1.6/Skopos-Setup-0.1.6-windows-x64.exe",
+  "sha256": "c4c3d0c1ddd62cae52490088a638cb951c609a1c5028b303503a836f15d25512"
 }
