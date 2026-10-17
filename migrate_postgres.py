@@ -15,7 +15,7 @@ import db
 
 TABLES = ("companies", "users", "company_memberships", "company_invitations", "transactions", "budgets", "sales_lines", "inventory_snapshots", "app_settings", "import_batches", "user_settings", "input_batches", "daily_sales", "opening_balances", "recurring_expenses", "company_deletion_backups")
 IDENTITY_TABLES = ("companies", "company_invitations", "transactions", "budgets", "sales_lines", "inventory_snapshots")
-TABLES += ("identity_credentials", "identity_codes", "identity_flows", "identity_google_links")
+TABLES += ("identity_credentials", "identity_codes", "identity_flows", "identity_google_links", "identity_recovery")
 
 
 def migrate(source: Path, apply: bool = False):

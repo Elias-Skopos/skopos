@@ -3,6 +3,7 @@
 Mounted only by the installed edition. Streamlit uses its native st.login/st.user.
 """
 import base64
+from datetime import timedelta
 import hmac
 import json
 from pathlib import Path
@@ -25,6 +26,8 @@ import db
 import local_identity as identities
 from local_paths import APP_ROOT
 
+SESSION_SECONDS = 30 * 24 * 60 * 60
+
 FORM = '''<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Skopos · Acesso</title><style>
 *{box-sizing:border-box}body{margin:0;font:16px system-ui;color:#171927;background:#fff}.layout{display:flex;min-height:100vh}
@@ -34,24 +37,54 @@ h1{font-size:36px;letter-spacing:-1px}p{line-height:1.6;color:#73798b}.right p{c
 label{display:block;margin-top:16px}input{width:100%;border:1px solid #d9d8ed;border-radius:10px;padding:13px;margin:6px 0;font:inherit}
 button,.button{display:block;text-align:center;width:100%;padding:15px;margin-top:18px;border:0;border-radius:10px;background:#625fe9;color:#fff;text-decoration:none;font:inherit;cursor:pointer}
 a{color:#514ed5}.secondary{background:#efeeff;color:#514ed5}.error{background:#efeeff;color:#514ed5;padding:14px;border-radius:10px}
-.small{font-size:13px} @media(max-width:760px){.layout{display:block}.left,.right{width:100%;padding:32px 24px}.right{border-radius:14px 14px 0 0}}
+.small{font-size:13px}dialog{border:0;border-radius:14px;max-width:440px;padding:28px}dialog::backdrop{background:#17192766}code{overflow-wrap:anywhere}.success{color:#177047} @media(max-width:760px){.layout{display:block}.left,.right{width:100%;padding:32px 24px}.right{border-radius:14px 14px 0 0}}
 </style><body><div class="layout"><section class="left"><div><img class="logo" src="{{ issuer }}/assets/logo_login.svg" alt="Skopos">
-<h1>{{ title }}</h1><p>{{ description }}</p>{% if error %}<p class="error">{{ error }}</p>{% endif %}
-<form method="post"><input type="hidden" name="csrf" value="{{ csrf }}">
-{% if mode == 'register' %}<label>Seu nome<input name="name" maxlength="120" required autocomplete="name"></label>{% endif %}
-{% if mode != 'password' %}<label>E-mail<input type="email" name="email" maxlength="254" required autocomplete="username"></label>{% endif %}
+<h1>{{ title }}</h1><p>{{ description }}</p>{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% if success %}<p class="success" role="status">{{ success }}</p>{% endif %}
+{% if recovery_code %}<p>Guarde este código em um lugar seguro fora do aplicativo. Ele aparece somente agora, funciona uma vez e substitui o anterior.</p><code>{{ recovery_code }}</code>{% endif %}
+<form method="post" id="access-form"><input type="hidden" name="csrf" value="{{ csrf }}">
+{% if mode == 'register' %}<label>Seu nome<input name="name" value="{{ name }}" maxlength="120" required autocomplete="name"></label>{% endif %}
+{% if mode != 'password' %}<label>E-mail<input type="email" name="email" value="{{ email }}" maxlength="254" required autocomplete="username"></label>{% endif %}
+{% if mode == 'recover' %}<label>Código de recuperação<input name="recovery_code" required maxlength="128" autocomplete="off"></label>{% endif %}
 {% if mode == 'password' and not google_fresh %}<label>Senha atual<input type="password" name="current_password" required autocomplete="current-password"></label>{% endif %}
 <label>{{ 'Nova senha' if mode == 'password' else 'Senha' }}<input type="password" name="password" required maxlength="256" minlength="{{ 12 if mode != 'login' else 1 }}" autocomplete="{{ 'current-password' if mode == 'login' else 'new-password' }}"></label>
+{% if mode != 'login' %}<p class="small" id="password-rules">Use de 12 a 256 caracteres. Letras, números, espaços e símbolos são aceitos; não há combinação obrigatória. Repita exatamente a mesma senha.</p>{% endif %}
 {% if mode != 'login' %}<label>Repita a senha<input type="password" name="repeat" required minlength="12" maxlength="256" autocomplete="new-password"></label>{% endif %}
-<button>{{ 'Criar perfil local' if mode == 'register' else 'Salvar senha local' if mode == 'password' else 'Entrar' }}</button></form>
+<button>{{ 'Criar perfil local' if mode == 'register' else 'Redefinir senha local' if mode == 'recover' else 'Salvar senha local' if mode == 'password' else 'Entrar' }}</button></form>
 {% if mode == 'login' %}<a class="button secondary" href="{{ issuer }}/register">Criar perfil local</a>
+<a class="button secondary" href="{{ issuer }}/recover">Esqueci minha senha</a>
 {% if google_enabled %}<a class="button secondary" href="{{ issuer }}/google/start">Continuar com Google</a>{% endif %}
 {% if google_pending %}<p class="small">Para usar Google, use o menu Skopos → Configurar Google. Use as credenciais de Aplicativo para computador e reabra o Skopos.</p>{% endif %}
 {% endif %}
-{% if mode == 'password' %}{% if google_enabled %}<a class="button secondary" href="{{ issuer }}/google/start?link=1">Vincular ou confirmar Google</a>{% endif %}<a class="button secondary" href="{{ home }}">Voltar ao Skopos</a>{% endif %}
+{% if mode in ('register','recover') %}<a class="button secondary" data-login href="{{ login_url }}">Voltar ao login</a>{% endif %}
+{% if mode == 'recover' %}<p class="small">Se já vinculou o Google a este perfil, confirme o acesso para cadastrar uma nova senha local.</p>{% if google_enabled %}<a class="button secondary" href="{{ issuer }}/google/start?recover=1">Recuperar com Google vinculado</a>{% endif %}<p class="small">Use um código gerado antes em Gerenciar senha local e Google. Sem código ou Google previamente vinculado, não há redefinição automática por e-mail. A senha do Google é recuperada na própria conta Google.</p>{% endif %}
+{% if mode == 'password' %}{% if google_enabled %}<a class="button secondary" href="{{ issuer }}/google/start?link=1">Vincular ou confirmar Google</a>{% endif %}
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="recovery">
+{% if not google_fresh %}<label>Senha atual para gerar código<input name="current_password" type="password" required autocomplete="current-password"></label>{% endif %}<button class="secondary">Gerar novo código de recuperação</button></form>
+<a class="button secondary" href="{{ home }}">Voltar ao Skopos</a>{% endif %}
 <p class="small">A senha local pertence ao Skopos e é independente da senha do Google. Seus dados ficam neste computador.</p>
 </div></section><section class="right"><h2>Sua empresa em equilíbrio.</h2><p>Faturamento, caixa e estoque em um só lugar.</p>
-<img class="art" src="{{ issuer }}/assets/login_illustration.svg" alt="Ilustração Skopos"></section></div></body></html>'''
+<img class="art" src="{{ issuer }}/assets/login_illustration.svg" alt="Ilustração Skopos"></section></div>
+<dialog id="validation"><h2>Confira os dados</h2><p id="validation-message" role="alert"></p><button id="dismiss">Continuar preenchendo</button></dialog>
+<script nonce="{{ nonce }}">
+const form=document.getElementById('access-form'), dialog=document.getElementById('validation');
+function warn(message){document.getElementById('validation-message').textContent=message;dialog.showModal();}
+document.getElementById('dismiss').onclick=()=>dialog.close();
+form.addEventListener('submit',async event=>{event.preventDefault();
+ if(form.elements.repeat && form.elements.password.value!==form.elements.repeat.value){warn('As senhas devem ser iguais. Use de 12 a 256 caracteres.');return;}
+ const button=form.querySelector('button');button.disabled=true;
+ try{const response=await fetch(location.href,{method:'POST',body:new FormData(form),credentials:'same-origin',headers:{'Accept':'application/json'}});
+ const result=await response.json();if(result.redirect){location.assign(result.redirect);return;}
+ if(result.error){warn(result.error);return;}location.reload();
+ }catch(e){warn('Não foi possível enviar. Seus dados continuam preenchidos. Tente novamente.');}
+ finally{button.disabled=false;}});
+document.querySelectorAll('[data-login]').forEach(link=>link.addEventListener('click',()=>{
+ const url=new URL(link.href);if(form.elements.email)url.searchParams.set('email',form.elements.email.value);link.href=url.href;}));
+</script></body></html>'''
+
+GOOGLE_DONE = '''<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Skopos · Acesso confirmado</title>
+<body><h1>Acesso confirmado</h1><p>Volte à janela do Skopos. Esta guia será fechada quando o navegador permitir.</p>
+<p>Se ela continuar aberta, você pode fechá-la.</p><script nonce="{{ nonce }}">window.close();</script></body></html>'''
 
 GOOGLE_WAIT = '''<!doctype html><html lang="pt-BR"><meta charset="utf-8">
 <title>Skopos · Google</title><style>body{font:18px system-ui;background:#f8f8ff;color:#171927;
@@ -81,7 +114,8 @@ def create_provider(settings, key_path: Path):
     app = Flask("skopos_identity")
     app.secret_key = settings["cookie_secret"]
     app.config.update(SESSION_COOKIE_NAME="skopos_identity", SESSION_COOKIE_HTTPONLY=True,
-                      SESSION_COOKIE_SAMESITE="Lax", MAX_CONTENT_LENGTH=16384)
+                      SESSION_COOKIE_SAMESITE="Lax", MAX_CONTENT_LENGTH=16384,
+                      PERMANENT_SESSION_LIFETIME=timedelta(seconds=SESSION_SECONDS), SESSION_REFRESH_EACH_REQUEST=False)
 
     class Client(ClientMixin):
         def get_client_id(self): return client_id
@@ -110,6 +144,7 @@ def create_provider(settings, key_path: Path):
             payload = {"identity": req.user, "redirect_uri": req.payload.redirect_uri,
                        "scope": req.payload.scope, "nonce": req.payload.data.get("nonce", ""),
                        "auth_time": int(time.time()), "method": session.get("method", "pwd"),
+                       "session_expires": int(session["expires"]),
                        "code_challenge": req.payload.data.get("code_challenge"),
                        "code_challenge_method": req.payload.data.get("code_challenge_method")}
             identities.save_state("identity_codes", code, payload, ttl=60, nonce=payload["nonce"])
@@ -117,7 +152,8 @@ def create_provider(settings, key_path: Path):
             payload = identities.consume_state("identity_codes", code)
             return Code(payload) if payload else None
         def delete_authorization_code(self, code): pass  # consumed atomically when queried
-        def authenticate_user(self, code): return code.data["identity"]
+        def authenticate_user(self, code):
+            return {**code.data["identity"], "session_expires": code.data["session_expires"]}
 
     class OIDC(OpenIDCode):
         DEFAULT_EXPIRES_IN = 3600
@@ -125,7 +161,9 @@ def create_provider(settings, key_path: Path):
         def get_client_algorithm(self, client): return "RS256"
         def get_client_claims(self, client): return {"iss": issuer, "aud": [client_id]}
         def get_encode_header(self, client): return {"alg": "RS256", "kid": "skopos-local"}
-        def generate_user_info(self, user, scope): return identities.user_info(user)
+        def generate_user_info(self, user, scope):
+            # The token exchange is server-to-server and has no browser cookie.
+            return {**identities.user_info(user), "skopos_session_expires": int(user["session_expires"])}
         def exists_nonce(self, nonce, req):
             with db.connection() as conn:
                 return bool(conn.execute("SELECT 1 FROM identity_codes WHERE nonce=? AND expires_at>?", (nonce, int(time.time()))).fetchone())
@@ -139,17 +177,41 @@ def create_provider(settings, key_path: Path):
             session.pop("identity", None)
         return session.get("identity")
 
+    def sign_in(identity, method):
+        session.permanent = True
+        session.update(identity=identity, expires=time.time()+SESSION_SECONDS, method=method,
+                       google_until=time.time()+300 if method == "google" else 0, fresh_login_until=time.time()+10)
+
+    def next_location():
+        if session.pop("manage_account", False):
+            return issuer+"/account"
+        return issuer+session.get("authorization", "/account")
+
+    def destination(url):
+        return jsonify(redirect=url) if request.accept_mimetypes.best == "application/json" else redirect(url)
+
     def csrf_check():
         expected = session.get("csrf", "")
         if not expected or not hmac.compare_digest(request.form.get("csrf", "").encode(), expected.encode()):
             abort(400)
 
-    def display(mode, error=""):
+    def display(mode, error="", success="", recovery_code=""):
+        if error and request.accept_mimetypes.best == "application/json":
+            return jsonify(error=error)
+        if success and request.accept_mimetypes.best == "application/json":
+            session["account_notice"] = success
+            return jsonify(redirect=issuer+"/account" if mode == "password" else issuer+"/login")
         csrf = session.setdefault("csrf", secrets.token_urlsafe(32))
+        g.script_nonce = secrets.token_urlsafe(24)
+        email = request.form.get("email", request.args.get("email", ""))[:254]
         return render_template_string(FORM, mode=mode, issuer=issuer, home=home, csrf=csrf, error=error,
-             title={"login":"Faça seu login", "register":"Crie seu perfil", "password":"Seu acesso local"}[mode],
+             success=success or session.pop("account_notice", ""), recovery_code=recovery_code,
+             nonce=g.script_nonce, email=email, name=request.form.get("name", "")[:120],
+             login_url=issuer+"/login?"+urlencode({"email":email}),
+             title={"login":"Faça seu login", "register":"Crie seu perfil", "password":"Seu acesso local", "recover":"Recupere seu acesso"}[mode],
              description={"login":"Entre com sua senha local ou com o Google.", "register":"Uma conta individual para usar o Skopos neste computador.",
-                          "password":"Use os dois acessos no mesmo perfil, com as mesmas empresas e permissões."}[mode],
+                          "password":"Use os dois acessos no mesmo perfil, com as mesmas empresas e permissões.",
+                          "recover":"Redefina sua senha com um código de recuperação ou Google previamente vinculado."}[mode],
              google_enabled=bool(settings.get("google_client_id") and settings.get("google_client_secret")),
              google_pending=bool(settings.get("google_client_id") and not settings.get("google_client_secret")),
              google_fresh=session.get("google_until", 0) > time.time())
@@ -197,16 +259,20 @@ def create_provider(settings, key_path: Path):
             if request.args.get("code_challenge_method") != "S256":
                 return "O acesso exige PKCE S256.", 400
             session["authorization"] = request.full_path
-            if not identity or request.args.get("prompt") == "login":
+            fresh_login = session.pop("fresh_login_until", 0) > time.time()
+            if not identity or (request.args.get("prompt") == "login" and not fresh_login):
                 return display("login")
         else:
             csrf_check()
             identity = identities.authenticate(request.form.get("email", ""), request.form.get("password", ""))
             if not identity:
                 return display("login", "E-mail ou senha inválidos. Após várias tentativas, aguarde dez minutos."), 401
-            session.update(identity=identity, expires=time.time()+900, method="pwd", google_until=0)
+            sign_in(identity, "pwd")
         # The same validated query is retained on POST; Authlib validates it again.
-        return oauth.create_authorization_response(grant_user=identity)
+        response = oauth.create_authorization_response(grant_user=identity)
+        if request.accept_mimetypes.best == "application/json" and response.status_code == 302:
+            return destination(response.location)
+        return response
 
     @app.route("/register", methods=["GET", "POST"])
     def register():
@@ -217,25 +283,55 @@ def create_provider(settings, key_path: Path):
                     raise ValueError("As senhas devem ser iguais.")
                 identity = identities.create_local_user(request.form.get("email", ""), request.form.get("name", ""),
                                 request.form.get("password", ""), settings["installation_id"])
-                session.update(identity=identity, expires=time.time()+900, method="pwd", google_until=0)
-                return redirect(issuer+session.get("authorization", "/account"))
+                sign_in(identity, "pwd")
+                return destination(next_location())
             except ValueError as exc:
                 return display("register", str(exc)), 400
         return display("register")
 
-    @app.route("/account", methods=["GET", "POST"])
-    def account():
-        identity = current()
-        if not identity:
-            return redirect(home)
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if request.method == "POST":
+            csrf_check()
+            identity = identities.authenticate(request.form.get("email", ""), request.form.get("password", ""))
+            if not identity:
+                return display("login", "E-mail ou senha inválidos. Após várias tentativas, aguarde dez minutos."), 401
+            sign_in(identity, "pwd")
+            return destination(next_location())
+        return display("login")
+
+    @app.route("/recover", methods=["GET", "POST"])
+    def recover():
         if request.method == "POST":
             csrf_check()
             try:
                 if request.form.get("password") != request.form.get("repeat"):
                     raise ValueError("As senhas devem ser iguais.")
+                identities.recover_password(request.form.get("email", ""), request.form.get("recovery_code", ""), request.form.get("password", ""))
+                session.clear()
+                return display("login", success="Senha redefinida. Entre com a nova senha e gere outro código de recuperação.")
+            except ValueError as exc:
+                return display("recover", str(exc)), 400
+        return display("recover")
+
+    @app.route("/account", methods=["GET", "POST"])
+    def account():
+        identity = current()
+        if not identity:
+            session["manage_account"] = True
+            return redirect(issuer+"/login")
+        if request.method == "POST":
+            csrf_check()
+            try:
+                if request.form.get("action") == "recovery":
+                    code = identities.create_recovery_code(identity, request.form.get("current_password"),
+                                                           google_confirmed=session.get("google_until", 0) > time.time())
+                    return display("password", recovery_code=code)
+                if request.form.get("password") != request.form.get("repeat"):
+                    raise ValueError("As senhas devem ser iguais.")
                 identities.set_password(identity, request.form.get("password", ""), request.form.get("current_password"),
                                         google_confirmed=session.get("google_until", 0) > time.time())
-                return display("password", "Senha local salva. Os dois acessos usam este mesmo perfil.")
+                return display("password", success="Senha local salva. Os dois acessos usam este mesmo perfil.")
             except ValueError as exc:
                 return display("password", str(exc)), 400
         return display("password")
@@ -269,7 +365,8 @@ def create_provider(settings, key_path: Path):
         client = OAuth2Session(google_client, redirect_uri=redirect_uri, scope="openid email profile", code_challenge_method="S256")
         url, state = client.create_authorization_url("https://accounts.google.com/o/oauth2/v2/auth", code_verifier=verifier, nonce=nonce, prompt="select_account")
         payload = {"verifier":verifier, "nonce":nonce, "browser":identities.digest(browser),
-                   "target":target, "authorization":session.get("authorization"), "redirect_uri":redirect_uri}
+                   "target":target, "authorization":session.get("authorization"), "redirect_uri":redirect_uri,
+                   "recover":request.args.get("recover") == "1"}
         desktop = "SkoposDesktop/" in request.headers.get("User-Agent", "")
         if desktop:
             payload["desktop_result"] = secrets.token_urlsafe(48)
@@ -327,7 +424,8 @@ def create_provider(settings, key_path: Path):
             if payload.get("desktop_result"):
                 identities.save_state("identity_flows", payload["desktop_result"],
                                       {"browser":payload["browser"], "ticket":ticket}, ttl=60)
-                return "<!doctype html><meta charset='utf-8'><title>Skopos</title><p>Acesso confirmado. Volte à janela do Skopos. Você pode fechar esta guia.</p>"
+                g.script_nonce = secrets.token_urlsafe(24)
+                return render_template_string(GOOGLE_DONE, nonce=g.script_nonce)
             return redirect(issuer+"/google/complete?"+urlencode({"ticket":ticket}))
         except Exception as exc:
             oauth_error = getattr(exc, "error", None)
@@ -357,9 +455,9 @@ def create_provider(settings, key_path: Path):
             target = payload.get("target")
             if target and current() != target:
                 abort(400)
-            identity = identities.google_identity(payload["claims"], target)
-            session.update(identity=identity, expires=time.time()+900, method="google", google_until=time.time()+300)
-            if target:
+            identity = identities.google_identity(payload["claims"], target, existing_only=bool(payload.get("recover")))
+            sign_in(identity, "google")
+            if target or payload.get("recover") or session.pop("manage_account", False):
                 return redirect(issuer+"/account")
             return redirect(issuer+payload["authorization"] if payload.get("authorization") else issuer+"/account")
         except ValueError as exc:

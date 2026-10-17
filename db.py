@@ -653,6 +653,36 @@ def update_status(
         conn.execute("UPDATE transactions SET status=?, due_date=?, payment_date=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND company_id=?", (status, selected_due, settled, transaction_id, company_id))
 
 
+def update_transaction_statuses(changes: list[dict], company_id: int, issuer: str, subject: str) -> int:
+    """Apply the table's status/date edits together, rejecting stale or foreign rows."""
+    with connection() as conn:
+        _require_role(conn, company_id, issuer, subject, EDIT_ROLES)
+        suffix = " FOR UPDATE" if getattr(conn, "is_postgres", False) else ""
+        seen = set()
+        for change in changes:
+            transaction_id = int(change["id"])
+            if transaction_id in seen:
+                raise ValueError("Há um lançamento repetido na edição.")
+            seen.add(transaction_id)
+            row = conn.execute("SELECT status,due_date,payment_date FROM transactions WHERE id=? AND company_id=?" + suffix,
+                               (transaction_id, company_id)).fetchone()
+            if row is None:
+                raise ValueError("O lançamento não está disponível nesta empresa. Atualize a tela.")
+            current = {key: row[key] or None for key in ("status", "due_date", "payment_date")}
+            if change.get("expected") != current:
+                raise ValueError("Um lançamento foi alterado desde a abertura da tabela. Atualize a tela antes de editar novamente.")
+            status = change["status"]
+            if status not in {"Pago", "Pendente"}:
+                raise ValueError("Selecione um status válido.")
+            due = _validate_due_date(change.get("due_date")) if status == "Pendente" else change.get("due_date")
+            if due:
+                due = _validate_due_date(due)
+            paid = _validate_due_date(change.get("payment_date")) if status == "Pago" else None
+            conn.execute("UPDATE transactions SET status=?,due_date=?,payment_date=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND company_id=?",
+                         (status, due, paid, transaction_id, company_id))
+    return len(changes)
+
+
 def delete_transaction(transaction_id: int, company_id: int, issuer: str, subject: str) -> None:
     with connection() as conn:
         _require_role(conn, company_id, issuer, subject, EDIT_ROLES)

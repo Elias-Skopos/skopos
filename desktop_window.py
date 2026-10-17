@@ -117,6 +117,8 @@ def run_desktop(data_dir):
                                    background_color="#f8f8ff", text_select=True)
     api._window = window
     window.events.closed += stop.set
+    from desktop_downloads import install_download_handler
+    window.events.initialized += install_download_handler
 
     def import_google():
         from desktop_google import import_credentials

@@ -4,9 +4,11 @@ Aplicativo em Python, Streamlit, SQLite local e PostgreSQL externo para acompanh
 
 Endereço publicado: [skopos.streamlit.app](https://skopos.streamlit.app/).
 
-Documentação atualizada em 13/10/2026. As mudanças locais precisam ser enviadas ao GitHub para chegar à versão publicada.
+Documentação atualizada em 17/10/2026. As mudanças locais precisam ser enviadas ao GitHub para chegar à versão publicada.
 
 ## Instalador Windows e site público
+
+A próxima versão **0.1.6** tem correções de cadastro, recuperação e persistência de acesso, favoritos acima dos KPIs, orientação para habilitar insights, filtro CSV no diálogo Windows e inserção manual/upload em abas, com edição de status na tabela. O código foi atualizado; o novo instalador ainda não foi compilado ou publicado. Consulte [ATUALIZACAO_0_1_6.md](ATUALIZACAO_0_1_6.md), incluindo as opções de recuperação e as validações manuais pendentes.
 
 O candidato **0.1.5** abre o painel em uma janela própria com pywebview/WebView2, oculta os comandos auxiliares da inicialização e corrige as cores da demo no modo escuro. Fechar a janela encerra a execução local; abrir novamente o atalho reativa a janela existente. Consulte [ATUALIZACAO_0_1_5.md](ATUALIZACAO_0_1_5.md) para atualização e validação. Os resultados das versões anteriores abaixo são históricos.
 
@@ -25,7 +27,7 @@ Na edição instalada, cada perfil pode usar senha local e vincular Google à me
 
 ## Navegação e personalização
 
-- **Home:** saudação, capa da empresa, filtro de período e três blocos principais: ponto de equilíbrio mensal estimado, checklist dos próximos três pagamentos e entradas/saídas realizadas. Favoritos ficam abaixo desse resumo.
+- **Home:** saudação, capa da empresa, filtro de período, favoritos e três blocos principais: ponto de equilíbrio mensal estimado, checklist dos próximos três pagamentos e entradas/saídas realizadas.
 - **Acompanhamento:** Visão geral, Relatórios, Fluxo de caixa, Contas, Curva ABC e Insights com IA.
 - **Alimentar e planejar:** Vendas e estoque, Lançamentos e Orçamento, disponíveis para administrador e gestor.
 - **Gestão da Plataforma:** API do Horus, Configuração de IA e Conta, disponíveis para administrador.
@@ -34,7 +36,7 @@ Na edição instalada, cada perfil pode usar senha local e vincular Google à me
 
 O filtro de período compartilhado aparece em um botão compacto à direita; as datas são editadas ao abrir o calendário. Há modo claro/escuro e ocultação dos valores na Home e na Visão geral. O logo da barra lateral retorna à Home na mesma guia. As imagens da marca ficam em `assets/logo_login.svg` (login) e `assets/logo_barra_lateral.svg` (barra lateral).
 
-Em Lançamentos, Tipo e Status atualizam categoria e vencimento antes do envio do formulário. Ao alternar um lançamento pago para pendente, selecione o vencimento no campo exibido nas ações. A busca trata o texto digitado literalmente. Na remoção de colaboradores por Conta, marque a confirmação e envie o formulário; o servidor verifica a confirmação antes de remover o acesso.
+Em Lançamentos, inserção manual, envio CSV e recorrências ficam em abas distintas. Tipo e Status atualizam categoria e vencimento antes do envio do formulário. No histórico, edite Status, Vencimento e Pagamento/recebimento diretamente na tabela e confirme em Salvar alterações de status. Todo o lote é validado antes da confirmação; atualizações concorrentes são recusadas. As ações individuais continuam disponíveis abaixo. A busca trata o texto digitado literalmente. Na remoção de colaboradores por Conta, marque a confirmação e envie o formulário; o servidor verifica a confirmação antes de remover o acesso.
 
 O CSS tenta ocultar os controles e o selo do Streamlit Cloud para evitar sobreposição com a barra do Skopos. O resultado deve ser conferido na hospedagem após atualizações do Streamlit.
 

@@ -74,6 +74,7 @@ import ui as ui_module
 import autonomy
 import autonomy_ui
 import home_finance_ui
+import transaction_ui
 from account_ui import (
     ROLE_LABELS, activate_company, clear_company_session, company_invitation_form, company_deletion_panel,
     open_workspace_picker, personal_profile, workspace_picker,
@@ -185,7 +186,10 @@ if os.environ.get("SKOPOS_DESKTOP") == "1":
     if identity_issuer != st.secrets.get("desktop", {}).get("issuer"):
         st.error("Este acesso não pertence à instalação local.")
         st.stop()
-    if st.user.get("exp", 0) < time.time():
+    # The OIDC token expires after one hour; the signed application session has
+    # its own lifetime. Older installed tokens use their original issuance time.
+    session_expires = st.user.get("skopos_session_expires", st.user.get("iat", 0) + 30 * 86400)
+    if session_expires < time.time():
         st.logout()
         st.stop()
     identity_issuer = st.user.get("skopos_issuer", "")
@@ -528,9 +532,6 @@ def home_page(df: pd.DataFrame, start: date, end: date) -> None:
     render_dashboard_welcome(company_id, display_name)
     start, end = render_period_filter(start, end)
 
-    home_finance_ui.render_summary(df, start, end, company_id, identity_issuer, identity_subject,
-                                   can_edit, st.session_state.get("hide_financial_values", True))
-
     raw_shortcuts = get_user_setting(f"home_shortcuts_{company_id}", identity_issuer, identity_subject, get_app_setting("home_shortcuts", company_id))
     try:
         shortcuts = json.loads(raw_shortcuts) if raw_shortcuts else ["Visão geral", "Vendas e estoque", "Lançamentos", "Contas"]
@@ -549,6 +550,9 @@ def home_page(df: pd.DataFrame, start: date, end: date) -> None:
                     args=(target,),
                     width="content",
                 )
+
+    home_finance_ui.render_summary(df, start, end, company_id, identity_issuer, identity_subject,
+                                   can_edit, st.session_state.get("hide_financial_values", True))
 
 def account_settings_page() -> None:
     page_header("Minha conta", "Meu perfil", "Seu perfil, preferências pessoais e participação nas empresas.")
@@ -1219,7 +1223,6 @@ def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> Non
                          width="stretch", hide_index=True)
         return
     autonomy_ui.import_form("daily", company_id, identity_issuer, identity_subject)
-    autonomy_ui.import_history("daily", company_id, identity_issuer, identity_subject)
     st.caption("O app também aceita CSV de vendas por item ou consulta pela API. O formato abaixo é por item de pedido: uma linha para cada combinação de pedido e SKU.")
     st.info("Padrão obrigatório: datas DD-MM-AAAA (12-10-2026), números com vírgula decimal (1234,56) e CSV separado por ponto e vírgula (;). Não use separador de milhar, R$, %, ponto decimal ou fórmulas. UTF-8 recomendado. Campos numéricos opcionais vazios valem zero. O arquivo inteiro é bloqueado se houver erro.")
     sales_template = csv_template(SALES_COLUMNS)
@@ -1281,6 +1284,7 @@ def sales_import_page(sales_df: pd.DataFrame, inventory_df: pd.DataFrame) -> Non
         st.dataframe(sales_table.head(100), width="stretch", hide_index=True)
     if not inventory_df.empty:
         st.caption(f"Inventários armazenados: {len(inventory_df)} linhas.")
+    autonomy_ui.import_history("daily", company_id, identity_issuer, identity_subject)
     render_import_history(sales_df, inventory_df)
 
 
@@ -1717,43 +1721,52 @@ def team_page(show_header: bool = True) -> None:
 def transactions_page(df: pd.DataFrame) -> None:
     page_header("Operação", "Lançamentos", "Registre entradas e saídas com o mínimo de fricção e mantenha o histórico auditável.")
     if can_edit:
-        autonomy_ui.import_form("finance", company_id, identity_issuer, identity_subject)
-        autonomy_ui.import_history("finance", company_id, identity_issuer, identity_subject)
-        autonomy_ui.recurrence_form(company_id, identity_issuer, identity_subject, EXPENSE_CATEGORIES, PAYMENT_METHODS)
-        with st.expander("＋ Novo lançamento", expanded=df.empty):
-            kind_col, status_col = st.columns(2)
-            kind = kind_col.selectbox("Tipo", ["Receita", "Despesa"], key=f"new_transaction_kind_{company_id}")
-            status = status_col.selectbox("Status", ["Pago", "Pendente"], key=f"new_transaction_status_{company_id}")
-            with st.form("new_transaction", clear_on_submit=True):
-                dt = st.date_input("Data do registro", value=date.today(), format="DD/MM/YYYY")
-                settled = st.date_input("Data do recebimento / pagamento", value=date.today(), disabled=status == "Pendente", format="DD/MM/YYYY")
-                categories = REVENUE_CATEGORIES if kind == "Receita" else EXPENSE_CATEGORIES
-                category = st.selectbox("Categoria", categories)
-                description = st.text_input("Descrição", placeholder="Ex.: compra de 40 exemplares da Editora Horizonte")
-                c4, c5 = st.columns(2)
-                amount = c4.number_input("Valor (R$)", min_value=0.0, step=10.0, format="%.2f")
-                payment = c5.selectbox("Forma de pagamento", PAYMENT_METHODS)
-                due = st.date_input("Vencimento", value=dt, disabled=(status == "Pago"), format="DD/MM/YYYY")
-                notes = st.text_area("Observações", placeholder="Opcional", height=80)
-                submitted = st.form_submit_button("Salvar lançamento", type="primary", width="stretch")
-                if submitted:
-                    if not description.strip() or amount <= 0:
-                        st.error("Informe uma descrição e um valor maior que zero.")
-                    else:
-                        add_transaction({
-                            "date": dt.isoformat(), "kind": kind, "category": category,
-                            "description": description.strip(), "amount": amount,
-                            "payment_method": payment, "status": status,
-                            "due_date": due.isoformat() if status == "Pendente" else None,
-                            "payment_date": settled.isoformat() if status == "Pago" else None,
-                            "notes": notes.strip(),
-                        }, company_id, identity_issuer, identity_subject)
-                        st.success("Lançamento salvo.")
-                        st.rerun()
+        manual_tab, upload_tab, recurring_tab = st.tabs(["Inserção manual", "Enviar arquivo CSV", "Despesas recorrentes"])
+        with manual_tab:
+            with st.expander("Novo lançamento", expanded=True):
+                kind_col, status_col = st.columns(2)
+                kind = kind_col.selectbox("Tipo", ["Receita", "Despesa"], key=f"new_transaction_kind_{company_id}")
+                status = status_col.selectbox("Status", ["Pago", "Pendente"], key=f"new_transaction_status_{company_id}")
+                with st.form("new_transaction", clear_on_submit=True):
+                    dt = st.date_input("Data do registro", value=date.today(), format="DD/MM/YYYY")
+                    settled = st.date_input("Data do recebimento / pagamento", value=date.today(), disabled=status == "Pendente", format="DD/MM/YYYY")
+                    categories = REVENUE_CATEGORIES if kind == "Receita" else EXPENSE_CATEGORIES
+                    category = st.selectbox("Categoria", categories)
+                    description = st.text_input("Descrição", placeholder="Ex.: compra de 40 exemplares da Editora Horizonte")
+                    c4, c5 = st.columns(2)
+                    amount = c4.number_input("Valor (R$)", min_value=0.0, step=10.0, format="%.2f")
+                    payment = c5.selectbox("Forma de pagamento", PAYMENT_METHODS)
+                    due = st.date_input("Vencimento", value=dt, disabled=(status == "Pago"), format="DD/MM/YYYY")
+                    notes = st.text_area("Observações", placeholder="Opcional", height=80)
+                    submitted = st.form_submit_button("Salvar lançamento", type="primary", width="stretch")
+                    if submitted:
+                        if not description.strip() or amount <= 0:
+                            st.error("Informe uma descrição e um valor maior que zero.")
+                        else:
+                            add_transaction({
+                                "date": dt.isoformat(), "kind": kind, "category": category,
+                                "description": description.strip(), "amount": amount,
+                                "payment_method": payment, "status": status,
+                                "due_date": due.isoformat() if status == "Pendente" else None,
+                                "payment_date": settled.isoformat() if status == "Pago" else None,
+                                "notes": notes.strip(),
+                            }, company_id, identity_issuer, identity_subject)
+                            st.success("Lançamento salvo.")
+                            st.rerun()
+        with upload_tab:
+            autonomy_ui.import_form("finance", company_id, identity_issuer, identity_subject)
+        with recurring_tab:
+            autonomy_ui.recurrence_form(company_id, identity_issuer, identity_subject, EXPENSE_CATEGORIES, PAYMENT_METHODS)
     else:
         st.info("Seu perfil permite consultar os lançamentos, mas não cadastrar ou alterar registros.")
 
+    notice = st.session_state.pop(f"transaction_notice_{company_id}", None)
+    if notice:
+        st.success(notice)
+
     if df.empty:
+        if can_edit:
+            autonomy_ui.import_history("finance", company_id, identity_issuer, identity_subject)
         st.info("Ainda não há lançamentos. Cadastre o primeiro acima.")
         return
 
@@ -1775,7 +1788,10 @@ def transactions_page(df: pd.DataFrame) -> None:
     view["Status"] = view["status"]
     view["Valor"] = view["amount"].map(money)
     st.caption("Data mostra recebimento/pagamento para lançamentos pagos e a data do registro para pendentes. O vencimento de contas pendentes pode ser consultado em Contas.")
-    st.dataframe(view[["Data","Data do registro","Tipo","Categoria","Descrição","Status","Valor"]], width="stretch", hide_index=True)
+    if can_edit and not filtered.empty:
+        transaction_ui.status_editor(filtered, view, company_id, identity_issuer, identity_subject)
+    else:
+        st.dataframe(view[["Data","Data do registro","Tipo","Categoria","Descrição","Status","Valor"]], width="stretch", hide_index=True)
 
     if can_edit:
         with st.expander("Ações sobre lançamento"):
@@ -1808,6 +1824,9 @@ def transactions_page(df: pd.DataFrame) -> None:
                 if c2.button("Excluir", type="secondary", width="stretch"):
                     delete_transaction(selected, company_id, identity_issuer, identity_subject)
                     st.rerun()
+
+    if can_edit:
+        autonomy_ui.import_history("finance", company_id, identity_issuer, identity_subject)
 
 
 def accounts_page(df: pd.DataFrame, start: date, end: date) -> None:
@@ -1976,6 +1995,7 @@ def ai_configuration_page() -> None:
         type="password",
         key=input_key,
         on_change=remember_gemini_key,
+        persist_state="session",
         help="Usada apenas nesta sessão e nunca gravada no banco do Skopos.",
     )
     if configured_gemini_key():
@@ -2001,6 +2021,12 @@ def ai_insights_page(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: pd.
 
     model = get_app_setting("gemini_model", company_id, "gemini-3.8-flash")
     api_key = configured_gemini_key()
+    if not api_key:
+        st.info("Para gerar insights, informe a chave da API Gemini em Configuração de IA. Depois, autorize o envio dos indicadores abaixo.")
+        st.button("Configurar IA", icon=":material/settings:", key=f"insights_settings_{company_id}",
+                  on_click=navigate_to, args=("Configuração de IA",))
+    if not model.strip():
+        st.warning("Escolha um modelo em Configuração de IA antes de gerar a análise.")
 
     daily_sales = query_df("SELECT date,amount FROM daily_sales WHERE company_id=?", [company_id])
     summary = build_insight_payload(df, sales_df, inventory_df, start, end, daily_sales=daily_sales)
@@ -2012,6 +2038,8 @@ def ai_insights_page(df: pd.DataFrame, sales_df: pd.DataFrame, inventory_df: pd.
         key=f"gemini_data_consent_{company_id}",
     )
     can_generate = bool(api_key and model.strip() and consent)
+    if api_key and model.strip() and not consent:
+        st.caption("Marque a autorização acima para habilitar Gerar insights.")
     if st.button(
         "Gerar insights",
         type="primary",

@@ -1,6 +1,8 @@
 """Individual local credentials and short-lived OIDC state, stored in PostgreSQL."""
 import hashlib
+import hmac
 import json
+import secrets
 import time
 from uuid import uuid4
 
@@ -32,6 +34,10 @@ def init_schema(conn):
     conn.execute("""CREATE TABLE IF NOT EXISTS identity_google_links (
         google_subject TEXT PRIMARY KEY, issuer TEXT NOT NULL, subject TEXT NOT NULL,
         UNIQUE(issuer,subject))""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS identity_recovery (
+        issuer TEXT NOT NULL, subject TEXT NOT NULL, code_hash TEXT NOT NULL,
+        failed_attempts INTEGER NOT NULL DEFAULT 0, locked_until INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY(issuer,subject))""")
 
 
 def create_local_user(email, name, password, installation_id):
@@ -104,6 +110,55 @@ def set_password(identity, password, current_password=None, google_confirmed=Fal
             (info["email"], identity["issuer"], identity["subject"], hashed))
 
 
+def create_recovery_code(identity, current_password=None, google_confirmed=False):
+    """A new offline recovery secret replaces the previous one after reauthentication."""
+    info = user_info(identity)
+    if not google_confirmed and authenticate(info["email"], current_password or "") != identity:
+        raise ValueError("Confirme a senha atual ou entre novamente pelo Google.")
+    code = secrets.token_hex(24)
+    with db.connection() as conn:
+        conn.execute("""INSERT INTO identity_recovery(issuer,subject,code_hash) VALUES (?,?,?)
+            ON CONFLICT(issuer,subject) DO UPDATE SET code_hash=excluded.code_hash,failed_attempts=0,locked_until=0""",
+            (identity["issuer"], identity["subject"], digest(code)))
+    return code
+
+
+def recover_password(email, code, password):
+    """Consume a high-entropy recovery code once, with transactional retry limits."""
+    if not 12 <= len(password) <= 256:
+        raise ValueError("Use uma senha com 12 a 256 caracteres.")
+    email = email.strip().casefold()
+    if len(email) > 254 or len(code) > 128:
+        raise ValueError("E-mail ou código inválido. Após várias tentativas, aguarde dez minutos.")
+    now = int(time.time())
+    identity = None
+    with db.connection() as conn:
+        suffix = " FOR UPDATE" if getattr(conn, "is_postgres", False) else ""
+        if not suffix:
+            conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("""SELECT r.* FROM identity_recovery r
+            JOIN users u ON u.issuer=r.issuer AND u.subject=r.subject WHERE u.email=?""" + suffix, (email,)).fetchone()
+        if row and row["locked_until"] <= now:
+            if row["code_hash"] and hmac.compare_digest(row["code_hash"], digest(code.strip())):
+                identity = {"issuer": row["issuer"], "subject": row["subject"]}
+                other = conn.execute("SELECT issuer,subject FROM identity_credentials WHERE login=?", (email,)).fetchone()
+                if other and (other[0], other[1]) != (row["issuer"], row["subject"]):
+                    raise ValueError("Este e-mail pertence a outro perfil local. Nenhum acesso foi alterado.")
+                hashed = PASSWORDS.hash(password)
+                conn.execute("""INSERT INTO identity_credentials(login,issuer,subject,password_hash) VALUES (?,?,?,?)
+                    ON CONFLICT(login) DO UPDATE SET password_hash=excluded.password_hash,failed_attempts=0,locked_until=0
+                    WHERE identity_credentials.issuer=excluded.issuer AND identity_credentials.subject=excluded.subject""",
+                    (email, row["issuer"], row["subject"], hashed))
+                conn.execute("DELETE FROM identity_recovery WHERE issuer=? AND subject=?", (row["issuer"], row["subject"]))
+            else:
+                attempts = row["failed_attempts"] + 1 if row["locked_until"] == 0 else 1
+                conn.execute("UPDATE identity_recovery SET failed_attempts=?,locked_until=? WHERE issuer=? AND subject=?",
+                             (attempts, now+600 if attempts >= 5 else 0, row["issuer"], row["subject"]))
+    if not identity:
+        raise ValueError("E-mail ou código inválido. Após várias tentativas, aguarde dez minutos.")
+    return identity
+
+
 def save_state(table, token, payload, ttl=300, nonce=""):
     if table not in ("identity_codes", "identity_flows"):
         raise ValueError("Invalid state store")
@@ -133,7 +188,7 @@ def consume_state(table, token):
         return json.loads(row["payload"])
 
 
-def google_identity(claims, target=None):
+def google_identity(claims, target=None, existing_only=False):
     if claims.get("iss") not in ("https://accounts.google.com", "accounts.google.com") or claims.get("email_verified") is not True:
         raise ValueError("O Google precisa confirmar esta identidade e o e-mail.")
     google_sub = claims["sub"]
@@ -146,6 +201,10 @@ def google_identity(claims, target=None):
                                     (google_sub, "https://accounts.google.com", "accounts.google.com")).fetchall()
             if len(previous) > 1:
                 raise ValueError("Há mais de um perfil para este Google. Confira os vínculos antes de continuar.")
+            if existing_only and not previous:
+                raise ValueError("Este Google ainda não está vinculado a um perfil. Use seu código de recuperação ou entre com a senha local para vincular o Google.")
+            if not target and not previous and conn.execute("SELECT 1 FROM users WHERE email=?", (claims["email"].strip().casefold(),)).fetchone():
+                raise ValueError("Este e-mail já tem um perfil local. Entre com a senha local ou recupere com seu código; depois vincule o Google em Gerenciar senha local e Google.")
             identity = {"issuer": previous[0][0], "subject": previous[0][1]} if previous else {"issuer": "https://accounts.google.com", "subject": google_sub}
         if target:
             info = user_info(target)

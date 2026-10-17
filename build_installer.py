@@ -16,7 +16,8 @@ MODULES = ("app.py", "account_ui.py", "ai_insights.py", "analytics.py", "autonom
            "local_app_server.py", "local_config.py", "local_identity.py", "local_oidc.py", "local_paths.py",
            "local_postgres.py", "local_launcher.py", "desktop_setup.py", "postgres_backend.py", "ui.py",
            "online_app.py", "welcome_ui.py", "demo_data.py", "demo_ui.py", "migrate_postgres.py",
-           "home_finance.py", "home_finance_ui.py", "desktop_smoke.py", "desktop_google.py", "desktop_window.py")
+           "home_finance.py", "home_finance_ui.py", "desktop_smoke.py", "desktop_google.py", "desktop_window.py",
+           "desktop_downloads.py", "transaction_ui.py")
 DATA_FILES = (*MODULES, "app_chrome.css", "welcome.css", "desktop_defaults.json", "public_release.json", "TERMS_DESKTOP.txt")
 
 
