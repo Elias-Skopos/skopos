@@ -1,0 +1,7 @@
+{
+  "host": "smtp.gmail.com",
+  "port": 587,
+  "username": "skopos.suporte@gmail.com",
+  "password": "njdtdqrluipfobvx",
+  "from_email": "skopos.suporte@gmail.com"
+}

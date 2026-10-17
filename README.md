@@ -8,7 +8,9 @@ Documentação atualizada em 17/10/2026. As mudanças locais precisam ser enviad
 
 ## Instalador Windows e site público
 
-A próxima versão **0.1.6** tem correções de cadastro, recuperação e persistência de acesso, favoritos acima dos KPIs, orientação para habilitar insights, filtro CSV no diálogo Windows e inserção manual/upload em abas, com edição de status na tabela. O código foi atualizado; o novo instalador ainda não foi compilado ou publicado. Consulte [ATUALIZACAO_0_1_6.md](ATUALIZACAO_0_1_6.md), incluindo as opções de recuperação e as validações manuais pendentes.
+A versão **0.1.7** foi compilada e acrescenta recuperação da senha local por e-mail, com remetente Gmail/Workspace configurado privadamente em cada instalação. Consulte [ATUALIZACAO_0_1_7.md](ATUALIZACAO_0_1_7.md) para localizar o instalador, gerar a senha de app, importar a configuração e usar o link de 15 minutos. O executável passou no autoteste com PostgreSQL e WebView2; o envio real ainda depende da configuração do remetente. O login Google não fornece credenciais SMTP, e nenhuma senha de envio é incluída no instalador público. A Release 0.1.7 ainda não foi publicada.
+
+O candidato **0.1.6** foi compilado com correções de cadastro, recuperação e persistência de acesso, favoritos acima dos KPIs, orientação para habilitar insights, filtro CSV no diálogo Windows e inserção manual/upload em abas, com edição de status na tabela. O instalador está em `dist/installer/Skopos-Setup-0.1.6-windows-x64.exe` e passou no autoteste com PostgreSQL e WebView2 em pasta nova. Ainda não foi publicado. Consulte [ATUALIZACAO_0_1_6.md](ATUALIZACAO_0_1_6.md), incluindo checksum, opções de recuperação e validações manuais pendentes.
 
 O candidato **0.1.5** abre o painel em uma janela própria com pywebview/WebView2, oculta os comandos auxiliares da inicialização e corrige as cores da demo no modo escuro. Fechar a janela encerra a execução local; abrir novamente o atalho reativa a janela existente. Consulte [ATUALIZACAO_0_1_5.md](ATUALIZACAO_0_1_5.md) para atualização e validação. Os resultados das versões anteriores abaixo são históricos.
 

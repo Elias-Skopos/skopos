@@ -38,6 +38,12 @@ def init_schema(conn):
         issuer TEXT NOT NULL, subject TEXT NOT NULL, code_hash TEXT NOT NULL,
         failed_attempts INTEGER NOT NULL DEFAULT 0, locked_until INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY(issuer,subject))""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS identity_email_resets (
+        login TEXT PRIMARY KEY, token_hash TEXT NOT NULL, password_hash_at_issue TEXT NOT NULL,
+        expires_at INTEGER NOT NULL)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS identity_email_throttle (
+        bucket TEXT PRIMARY KEY, window_start INTEGER NOT NULL, attempts INTEGER NOT NULL,
+        last_request INTEGER NOT NULL)""")
 
 
 def create_local_user(email, name, password, installation_id):
@@ -157,6 +163,69 @@ def recover_password(email, code, password):
     if not identity:
         raise ValueError("E-mail ou código inválido. Após várias tentativas, aguarde dez minutos.")
     return identity
+
+
+def request_email_reset(email):
+    """Issue a hashed 15-minute token; all callers share the same response."""
+    email = email.strip().casefold()
+    if not db.re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email) or len(email) > 254:
+        raise ValueError("Informe um e-mail válido.")
+    now = int(time.time())
+    token = None
+    with db.connection() as conn:
+        suffix = " FOR UPDATE" if getattr(conn, "is_postgres", False) else ""
+        if not suffix:
+            conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM identity_email_throttle WHERE bucket<>'global' AND last_request<?", (now-86400,))
+        buckets = []
+        for bucket, limit in (("global", 30), (digest(email), 5)):
+            conn.execute("""INSERT INTO identity_email_throttle(bucket,window_start,attempts,last_request)
+                VALUES (?,?,0,0) ON CONFLICT(bucket) DO NOTHING""", (bucket, now))
+            row = conn.execute("SELECT * FROM identity_email_throttle WHERE bucket=?"+suffix, (bucket,)).fetchone()
+            expired = now-row["window_start"] >= 3600
+            if (not expired and row["attempts"] >= limit) or (bucket != "global" and now-row["last_request"] < 60):
+                return None
+            buckets.append((bucket, now if expired else row["window_start"], 1 if expired else row["attempts"]+1))
+        for bucket, start, attempts in buckets:
+            conn.execute("UPDATE identity_email_throttle SET window_start=?,attempts=?,last_request=? WHERE bucket=?",
+                         (start, attempts, now, bucket))
+        row = conn.execute("SELECT password_hash FROM identity_credentials WHERE login=?", (email,)).fetchone()
+        if row:
+            token = secrets.token_urlsafe(32)
+            conn.execute("""INSERT INTO identity_email_resets(login,token_hash,password_hash_at_issue,expires_at) VALUES (?,?,?,?)
+                ON CONFLICT(login) DO UPDATE SET token_hash=excluded.token_hash,
+                password_hash_at_issue=excluded.password_hash_at_issue,expires_at=excluded.expires_at""",
+                (email, digest(token), row["password_hash"], now+900))
+        conn.execute("DELETE FROM identity_email_resets WHERE expires_at<=?", (now,))
+    return token
+
+
+def cancel_email_reset(email, token):
+    with db.connection() as conn:
+        conn.execute("DELETE FROM identity_email_resets WHERE login=? AND token_hash=?", (email.strip().casefold(), digest(token)))
+
+
+def reset_password_by_email(email, token, password):
+    if not 12 <= len(password) <= 256:
+        raise ValueError("Use uma senha com 12 a 256 caracteres.")
+    email = email.strip().casefold()
+    if len(token) > 128 or len(email) > 254:
+        raise ValueError("O link é inválido ou expirou. Solicite outro e-mail.")
+    with db.connection() as conn:
+        suffix = " FOR UPDATE" if getattr(conn, "is_postgres", False) else ""
+        if not suffix:
+            conn.execute("BEGIN IMMEDIATE")
+        reset = conn.execute("SELECT * FROM identity_email_resets WHERE login=?"+suffix, (email,)).fetchone()
+        if not reset or reset["expires_at"] <= int(time.time()) or not hmac.compare_digest(reset["token_hash"], digest(token)):
+            raise ValueError("O link é inválido ou expirou. Solicite outro e-mail.")
+        row = conn.execute("SELECT * FROM identity_credentials WHERE login=?"+suffix, (email,)).fetchone()
+        if not row or not hmac.compare_digest(row["password_hash"], reset["password_hash_at_issue"]):
+            raise ValueError("O link é inválido ou expirou. Solicite outro e-mail.")
+        conn.execute("UPDATE identity_credentials SET password_hash=?,failed_attempts=0,locked_until=0 WHERE login=?",
+                     (PASSWORDS.hash(password), email))
+        conn.execute("DELETE FROM identity_email_resets WHERE login=?", (email,))
+        conn.execute("DELETE FROM identity_recovery WHERE issuer=? AND subject=?", (row["issuer"], row["subject"]))
+    return {"issuer": row["issuer"], "subject": row["subject"]}
 
 
 def save_state(table, token, payload, ttl=300, nonce=""):

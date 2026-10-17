@@ -1,7 +1,7 @@
 [
   {
     "path": ".gitignore",
-    "sha256": "c09bf3e7b7197c8d07f3caaaa828acff6065f3e74bfa4c69ad4a2762ec314a0d"
+    "sha256": "1677bc74f3ba9484ae54578f8f45fb35e334c205f3790a2c4c9a196ee892f0b6"
   },
   {
     "path": ".streamlit/config.toml",
@@ -9,7 +9,7 @@
   },
   {
     "path": ".streamlit/secrets.toml.example",
-    "sha256": "30fc04d97146c0c874c656a37887c7aa7577a1b3629329e38af374673e10c728"
+    "sha256": "6a7d7f6663a3de3328380fd6c2cb87c00ebff1165516758cd663d46d64d1b9e3"
   },
   {
     "path": "ATUALIZACAO_0_1_4.md",
@@ -21,7 +21,11 @@
   },
   {
     "path": "ATUALIZACAO_0_1_6.md",
-    "sha256": "24a69610d1c5b6612a7362dc613a25c126cf219a037ebf67eca173a0219108d1"
+    "sha256": "8da98effb1ea57430d0e24e7d8ef6c0208e6bd3f400db31b427a9c3fa1bdb8f9"
+  },
+  {
+    "path": "ATUALIZACAO_0_1_7.md",
+    "sha256": "b3f2503ad43b400d5d5e0886eb4d00c50e308fa3ade968103f25165a70e06175"
   },
   {
     "path": "BACKLOG_INSTALAVEL.md",
@@ -45,11 +49,11 @@
   },
   {
     "path": "PUBLICACAO_WINDOWS.md",
-    "sha256": "7026c6946a5dc964b3b1e1f90601ea99a0b0d5f22e86e3ff9d2ef9f30127a895"
+    "sha256": "89310927b7818f9447ab072fcb5489aceca37f1e54195b51fadb35ba7c3d7c36"
   },
   {
     "path": "README.md",
-    "sha256": "48df7dc14b482d970b6d437b8356e13575b4213d53e5312b19d9a0fd30a4320c"
+    "sha256": "7801bb7448608ab6f657c4c8c81fdd43186b5e848442c5090c298eacb38ed4bf"
   },
   {
     "path": "TERMS_DESKTOP.txt",
@@ -121,7 +125,7 @@
   },
   {
     "path": "build_installer.py",
-    "sha256": "9465350e611d31527355daa51b41497629d8671075614a46f1014760f03db37e"
+    "sha256": "79f866c0004151d88f7b612f5a5a3290c451680aa65ce4e25c3b0e0d1efe8ddb"
   },
   {
     "path": "company_lifecycle.py",
@@ -141,7 +145,7 @@
   },
   {
     "path": "desktop_defaults.json",
-    "sha256": "0cdcfd32b0d859807a517d50abd65696c1af07cd3e3544af75a4860ceece581e"
+    "sha256": "c25ff0e95a2c01f835df071a9d0b36f87788fba2c43f827bb3a71898b3f6d78d"
   },
   {
     "path": "desktop_downloads.py",
@@ -165,11 +169,15 @@
   },
   {
     "path": "desktop_window.py",
-    "sha256": "edf0239f64d12b782222b8310ccf063fe830f971ee25ba37432675603506e937"
+    "sha256": "09e2bb8673e72a9922e1a89ef94b3a4b0e4c5e16e63bbdaf8bbd63d646e89c74"
   },
   {
     "path": "export_sources.py",
-    "sha256": "e8359510b0874e08d90aa8ee499d23ebae4d5e214ae357c94f75e87dcf5d9635"
+    "sha256": "6a591c232aab7a407496cec7deec755f2c42aea163df383a2c71e9c2d1afd1eb"
+  },
+  {
+    "path": "gmail-email.json.example",
+    "sha256": "db387ba4b8947c229facbfaab2f86d04ad15ab844787627145271e156bf58531"
   },
   {
     "path": "home_finance.py",
@@ -189,7 +197,7 @@
   },
   {
     "path": "installer/skopos.iss",
-    "sha256": "9daeec6343710b745457492ef5429a8082d25bdbc27fe511fc64e7e37178ff08"
+    "sha256": "f6125e883ef25cefbaaa1ac332c38ebecd89e2cd96852d395ccef662072aa8fc"
   },
   {
     "path": "invitation_email.py",
@@ -209,7 +217,7 @@
   },
   {
     "path": "local_identity.py",
-    "sha256": "4759c8e89d6ecc9f8afb2c2b15219627cd353a65ac96509ba62c7751a8356e74"
+    "sha256": "aec93e32fb3a0d1ec724f2e08784c73784d3712234ced91616c5ca6405a7bb84"
   },
   {
     "path": "local_launcher.py",
@@ -217,7 +225,7 @@
   },
   {
     "path": "local_oidc.py",
-    "sha256": "d5f57e634a4693e43563fba3483a3f266a450951e58ad9f399e024b6ee0929fc"
+    "sha256": "f7c45f708e7ca0e26ac59ba936b7df13af045a57ad3395247b268419a9e371b2"
   },
   {
     "path": "local_paths.py",
@@ -229,7 +237,7 @@
   },
   {
     "path": "migrate_postgres.py",
-    "sha256": "d23e47dbe794c0a7a239e00e26487255954501d4f1f4c57abd7e223c422eaa22"
+    "sha256": "065b88268d6d43a602a44b5da3575118e7560b5072065529622f37f415cd0768"
   },
   {
     "path": "online_app.py",
@@ -241,7 +249,11 @@
   },
   {
     "path": "public_release.json",
-    "sha256": "faa2d096b4bf9b8cc77c957e09d06aecb9fbc381a93f53cb8e4a72bc3164fe59"
+    "sha256": "4a9550628c97cc3c00676c6460e0d9c1ffe209bce7b2a37756575daed5e56b88"
+  },
+  {
+    "path": "recovery_email.py",
+    "sha256": "920f18cc101b97724bb0d1dfc9be5761ec3f95e2d53e62cd7d75d463082695aa"
   },
   {
     "path": "requirements-desktop.lock",
@@ -270,6 +282,10 @@
   {
     "path": "tests/test_desktop_window.py",
     "sha256": "1b3f801dbd485dfbd75bce865014581e6672bf79f934f4ff41de2fbffa3f7bab"
+  },
+  {
+    "path": "tests/test_email_recovery.py",
+    "sha256": "34b24b64a87a52f16b768c4e2c92222c45ee281cc84178f7ccbd0855ef496739"
   },
   {
     "path": "tests/test_home_finance.py",
@@ -301,7 +317,7 @@
   },
   {
     "path": "tests/test_public_desktop.py",
-    "sha256": "9e41fdfdc2b4d9eb95611340097ea8e6905777d53873d0d8bf25bf1bf6096e6a"
+    "sha256": "1ad1a9e8ba9b550c275ed716eeffc88654e2e4e6ff483ea63fad4d708a598bff"
   },
   {
     "path": "tests/test_regressions.py",

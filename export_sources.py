@@ -9,9 +9,9 @@ from build_installer import DATA_FILES
 ROOT = Path(__file__).resolve().parent
 EXTRA_FILES = (
     "desktop_entry.py", "build_installer.py", "export_sources.py", ".gitignore",
-    "requirements.txt", "requirements-desktop.lock", "README.md", "PUBLICACAO_WINDOWS.md", "ATUALIZACAO_0_1_4.md", "ATUALIZACAO_0_1_5.md", "ATUALIZACAO_0_1_6.md",
+    "requirements.txt", "requirements-desktop.lock", "README.md", "PUBLICACAO_WINDOWS.md", "ATUALIZACAO_0_1_4.md", "ATUALIZACAO_0_1_5.md", "ATUALIZACAO_0_1_6.md", "ATUALIZACAO_0_1_7.md",
     "POSTGRESQL.md", "POSTGRESQL_LOCAL.md", "BACKLOG_INSTALAVEL.md",
-    "local_app.json.example", ".streamlit/config.toml", ".streamlit/secrets.toml.example",
+    "local_app.json.example", "gmail-email.json.example", ".streamlit/config.toml", ".streamlit/secrets.toml.example",
     "installer/skopos.iss", "Iniciar Skopos local.cmd", "Fazer backup local.cmd",
     "assets/skopos_desktop_novo.ico", "assets/logo_novo.png", "assets/logo_login.svg",
     "assets/logo_login.png", "assets/logo_barra_lateral.svg", "assets/logo_barra_lateral_dark.svg", "assets/Logo_barra_lateral.png",

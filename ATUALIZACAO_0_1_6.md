@@ -1,6 +1,15 @@
 # Skopos 0.1.6 — acesso e alimentação de dados
 
-Implementação local em 17/10/2026. O código está preparado para a próxima versão; este trabalho não compila, instala nem publica um novo instalador.
+Implementação e instalador Windows compilados em 17/10/2026. O executável passou no autoteste em uma pasta nova, sem dados reais. A versão não foi instalada sobre a instalação do usuário nem publicada no GitHub.
+
+## Instalador compilado
+
+- Arquivo: `dist/installer/Skopos-Setup-0.1.6-windows-x64.exe` (121.513.507 bytes).
+- Integridade: `dist/installer/Skopos-Setup-0.1.6-windows-x64.exe.sha256`.
+- SHA256: `c4c3d0c1ddd62cae52490088a638cb951c609a1c5028b303503a836f15d25512`.
+- O pacote mantém o cliente Google Desktop usado no instalador anterior e o mesmo identificador de instalação do produto. Dados pessoais, banco, Secrets e backups ficam fora do pacote.
+- Para atualizar, feche o Skopos e execute o instalador. A pasta de dados existente é preservada.
+- Para distribuir pelo GitHub, anexe o `.exe` e o `.sha256` à Release `v0.1.6`. O ZIP de código serve para atualizar os arquivos do repositório. A ativação do download no site continua dependendo de publicação e conferência do arquivo; `public_release.json` não foi ativado por esta compilação.
 
 ## Correções solicitadas
 
@@ -21,6 +30,7 @@ Implementação local em 17/10/2026. O código está preparado para a próxima v
 - Suíte completa: 146 casos, sendo 133 aprovados e 13 de integração PostgreSQL ignorados por falta de banco de homologação configurado; nenhuma falha. Sintaxe e listas de arquivos do empacotamento também foram verificadas.
 - Fluxos de senha, CSRF, recuperação, limite de tentativas, vínculo Google, OIDC sem cookies de navegador, persistência da sessão, navegação da configuração de IA e edição de status têm cobertura automatizada.
 - Cadastro verificado também em navegador: senhas divergentes e e-mail duplicado abrem o aviso, mantêm os campos e permitem retornar ao login com o e-mail preenchido.
+- Executável compilado: autoteste aprovado para PostgreSQL, criação da estrutura, cálculo da Home, servidor, recursos estáticos, descoberta/JWKS da identidade local e renderização do login em WebView2 (`renderer=edgechromium`). Resultado registrado em `build/self-test-0.1.6-ok.json`; somente a pasta de teste foi usada.
 - O Google foi simulado nos testes de protocolo. Login Google real, fechamento da guia em cada navegador e o diálogo CSV nativo permanecem como validações manuais do próximo instalador.
 - Testes PostgreSQL opcionais exigem `SKOPOS_TEST_DATABASE_URL`; a suíte padrão usa SQLite temporário.
 - A nova tabela `identity_recovery` é criada na inicialização e está incluída no migrador PostgreSQL. Novos módulos estão incluídos na lista de arquivos do instalador e da exportação de código.

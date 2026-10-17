@@ -26,3 +26,5 @@ build/
 dist/
 .build_tools/
 *.spec
+gmail-email.json
+skopos-email.json

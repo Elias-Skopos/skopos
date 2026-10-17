@@ -138,11 +138,22 @@ def run_desktop(data_dir):
                 window.restore()
                 window.show()
 
+    def import_email():
+        from recovery_email import import_gmail_config
+        selection = window.create_file_dialog(webview.FileDialog.OPEN, file_types=("Configuração Gmail (*.json)",))
+        if selection:
+            try:
+                import_gmail_config(selection[0])
+                window.create_confirmation_dialog("E-mail configurado", "Remetente salvo neste computador. A opção Esqueci minha senha → Receber link por e-mail já pode ser usada.")
+            except (ValueError, OSError):
+                window.create_confirmation_dialog("Configuração de e-mail", "Não foi possível importar. Use o modelo de configuração Gmail com e-mail remetente e senha de app de 16 caracteres.")
+
     try:
         webview.start(activation_loop, gui="edgechromium", private_mode=False,
                       storage_path=str(Path(data_dir) / ".webview"),
                       user_agent="Mozilla/5.0 SkoposDesktop/1.0", icon=str(APP_ROOT / "assets/skopos_desktop_novo.ico"),
                       menu=[Menu("Skopos", [MenuAction("Configurar Google…", import_google),
+                                            MenuAction("Configurar e-mail Gmail…", import_email),
                                             MenuAction("Encerrar", window.destroy)])])
     finally:
         stop.set()

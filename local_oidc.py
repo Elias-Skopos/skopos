@@ -24,6 +24,7 @@ import requests
 
 import db
 import local_identity as identities
+import recovery_email
 from local_paths import APP_ROOT
 
 SESSION_SECONDS = 30 * 24 * 60 * 60
@@ -45,19 +46,23 @@ a{color:#514ed5}.secondary{background:#efeeff;color:#514ed5}.error{background:#e
 <form method="post" id="access-form"><input type="hidden" name="csrf" value="{{ csrf }}">
 {% if mode == 'register' %}<label>Seu nome<input name="name" value="{{ name }}" maxlength="120" required autocomplete="name"></label>{% endif %}
 {% if mode != 'password' %}<label>E-mail<input type="email" name="email" value="{{ email }}" maxlength="254" required autocomplete="username"></label>{% endif %}
-{% if mode == 'recover' %}<label>Código de recuperação<input name="recovery_code" required maxlength="128" autocomplete="off"></label>{% endif %}
+{% if mode == 'recover' %}<label>Código de emergência salvo anteriormente<input name="recovery_code" required maxlength="128" autocomplete="off"></label>{% endif %}
+{% if mode == 'reset_email' %}<input type="hidden" name="email_token" value=""><p class="small">O link vale por 15 minutos e funciona apenas neste computador, com o Skopos aberto.</p>{% endif %}
+{% if mode != 'email_request' %}
 {% if mode == 'password' and not google_fresh %}<label>Senha atual<input type="password" name="current_password" required autocomplete="current-password"></label>{% endif %}
-<label>{{ 'Nova senha' if mode == 'password' else 'Senha' }}<input type="password" name="password" required maxlength="256" minlength="{{ 12 if mode != 'login' else 1 }}" autocomplete="{{ 'current-password' if mode == 'login' else 'new-password' }}"></label>
+<label>{{ 'Nova senha' if mode in ('password','recover','reset_email') else 'Senha' }}<input type="password" name="password" required maxlength="256" minlength="{{ 12 if mode != 'login' else 1 }}" autocomplete="{{ 'current-password' if mode == 'login' else 'new-password' }}"></label>
 {% if mode != 'login' %}<p class="small" id="password-rules">Use de 12 a 256 caracteres. Letras, números, espaços e símbolos são aceitos; não há combinação obrigatória. Repita exatamente a mesma senha.</p>{% endif %}
 {% if mode != 'login' %}<label>Repita a senha<input type="password" name="repeat" required minlength="12" maxlength="256" autocomplete="new-password"></label>{% endif %}
-<button>{{ 'Criar perfil local' if mode == 'register' else 'Redefinir senha local' if mode == 'recover' else 'Salvar senha local' if mode == 'password' else 'Entrar' }}</button></form>
+{% endif %}
+<button {% if mode == 'email_request' and not email_enabled %}disabled{% endif %}>{{ submit_label }}</button></form>
 {% if mode == 'login' %}<a class="button secondary" href="{{ issuer }}/register">Criar perfil local</a>
-<a class="button secondary" href="{{ issuer }}/recover">Esqueci minha senha</a>
+<a class="button secondary" href="{{ issuer }}/request-email">Esqueci minha senha</a>
 {% if google_enabled %}<a class="button secondary" href="{{ issuer }}/google/start">Continuar com Google</a>{% endif %}
 {% if google_pending %}<p class="small">Para usar Google, use o menu Skopos → Configurar Google. Use as credenciais de Aplicativo para computador e reabra o Skopos.</p>{% endif %}
 {% endif %}
-{% if mode in ('register','recover') %}<a class="button secondary" data-login href="{{ login_url }}">Voltar ao login</a>{% endif %}
-{% if mode == 'recover' %}<p class="small">Se já vinculou o Google a este perfil, confirme o acesso para cadastrar uma nova senha local.</p>{% if google_enabled %}<a class="button secondary" href="{{ issuer }}/google/start?recover=1">Recuperar com Google vinculado</a>{% endif %}<p class="small">Use um código gerado antes em Gerenciar senha local e Google. Sem código ou Google previamente vinculado, não há redefinição automática por e-mail. A senha do Google é recuperada na própria conta Google.</p>{% endif %}
+{% if mode in ('register','recover','email_request','reset_email') %}<a class="button secondary" data-login href="{{ login_url }}">Voltar ao login</a>{% endif %}
+{% if mode == 'recover' %}<a class="button secondary" href="{{ issuer }}/request-email">Receber link por e-mail</a><p class="small">O campo acima usa um código de emergência gerado antes. Para receber um novo link, escolha a opção de e-mail.</p><p class="small">Se já vinculou o Google a este perfil, confirme o acesso para cadastrar uma nova senha local.</p>{% if google_enabled %}<a class="button secondary" href="{{ issuer }}/google/start?recover=1">Recuperar com Google vinculado</a>{% endif %}<p class="small">A senha do Google é recuperada na própria conta Google.</p>{% endif %}
+{% if mode == 'email_request' %}{% if not email_enabled %}<p class="error">Envio de e-mail não configurado neste computador. Use o menu Skopos → Configurar e-mail Gmail e importe a configuração do remetente.</p>{% endif %}<a class="button secondary" href="{{ issuer }}/recover">Usar código de emergência ou Google</a>{% endif %}
 {% if mode == 'password' %}{% if google_enabled %}<a class="button secondary" href="{{ issuer }}/google/start?link=1">Vincular ou confirmar Google</a>{% endif %}
 <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="recovery">
 {% if not google_fresh %}<label>Senha atual para gerar código<input name="current_password" type="password" required autocomplete="current-password"></label>{% endif %}<button class="secondary">Gerar novo código de recuperação</button></form>
@@ -65,17 +70,20 @@ a{color:#514ed5}.secondary{background:#efeeff;color:#514ed5}.error{background:#e
 <p class="small">A senha local pertence ao Skopos e é independente da senha do Google. Seus dados ficam neste computador.</p>
 </div></section><section class="right"><h2>Sua empresa em equilíbrio.</h2><p>Faturamento, caixa e estoque em um só lugar.</p>
 <img class="art" src="{{ issuer }}/assets/login_illustration.svg" alt="Ilustração Skopos"></section></div>
-<dialog id="validation"><h2>Confira os dados</h2><p id="validation-message" role="alert"></p><button id="dismiss">Continuar preenchendo</button></dialog>
+<dialog id="validation"><h2 id="validation-title">Confira os dados</h2><p id="validation-message" role="alert"></p><button id="dismiss">Continuar</button></dialog>
 <script nonce="{{ nonce }}">
 const form=document.getElementById('access-form'), dialog=document.getElementById('validation');
-function warn(message){document.getElementById('validation-message').textContent=message;dialog.showModal();}
+if(form.elements.email_token){const params=new URLSearchParams(location.hash.slice(1));
+ form.elements.email_token.value=params.get('token')||'';form.elements.email.value=params.get('email')||'';
+ history.replaceState(null,'',location.pathname);}
+function warn(message,title='Confira os dados'){document.getElementById('validation-title').textContent=title;document.getElementById('validation-message').textContent=message;dialog.showModal();}
 document.getElementById('dismiss').onclick=()=>dialog.close();
 form.addEventListener('submit',async event=>{event.preventDefault();
  if(form.elements.repeat && form.elements.password.value!==form.elements.repeat.value){warn('As senhas devem ser iguais. Use de 12 a 256 caracteres.');return;}
  const button=form.querySelector('button');button.disabled=true;
  try{const response=await fetch(location.href,{method:'POST',body:new FormData(form),credentials:'same-origin',headers:{'Accept':'application/json'}});
  const result=await response.json();if(result.redirect){location.assign(result.redirect);return;}
- if(result.error){warn(result.error);return;}location.reload();
+ if(result.error){warn(result.error);return;}if(result.message){warn(result.message,'Confira seu e-mail');return;}location.reload();
  }catch(e){warn('Não foi possível enviar. Seus dados continuam preenchidos. Tente novamente.');}
  finally{button.disabled=false;}});
 document.querySelectorAll('[data-login]').forEach(link=>link.addEventListener('click',()=>{
@@ -208,10 +216,14 @@ def create_provider(settings, key_path: Path):
              success=success or session.pop("account_notice", ""), recovery_code=recovery_code,
              nonce=g.script_nonce, email=email, name=request.form.get("name", "")[:120],
              login_url=issuer+"/login?"+urlencode({"email":email}),
-             title={"login":"Faça seu login", "register":"Crie seu perfil", "password":"Seu acesso local", "recover":"Recupere seu acesso"}[mode],
+             email_enabled=bool(recovery_email.load_config()),
+             submit_label={"login":"Entrar", "register":"Criar perfil local", "password":"Salvar senha local", "recover":"Redefinir senha local", "email_request":"Enviar link de recuperação", "reset_email":"Redefinir senha local"}[mode],
+             title={"login":"Faça seu login", "register":"Crie seu perfil", "password":"Seu acesso local", "recover":"Recupere seu acesso", "email_request":"Recuperar por e-mail", "reset_email":"Crie uma nova senha"}[mode],
              description={"login":"Entre com sua senha local ou com o Google.", "register":"Uma conta individual para usar o Skopos neste computador.",
                           "password":"Use os dois acessos no mesmo perfil, com as mesmas empresas e permissões.",
-                          "recover":"Redefina sua senha com um código de recuperação ou Google previamente vinculado."}[mode],
+                          "recover":"Escolha e-mail, código de emergência ou Google previamente vinculado.",
+                          "email_request":"Informe o e-mail do perfil que tem senha local. Confira a caixa de entrada e o spam.",
+                          "reset_email":"Defina uma nova senha local para o mesmo perfil, preservando suas empresas."}[mode],
              google_enabled=bool(settings.get("google_client_id") and settings.get("google_client_secret")),
              google_pending=bool(settings.get("google_client_id") and not settings.get("google_client_secret")),
              google_fresh=session.get("google_until", 0) > time.time())
@@ -313,6 +325,40 @@ def create_provider(settings, key_path: Path):
             except ValueError as exc:
                 return display("recover", str(exc)), 400
         return display("recover")
+
+    @app.route("/request-email", methods=["GET", "POST"])
+    def request_email():
+        if request.method == "POST":
+            csrf_check()
+            config = recovery_email.load_config()
+            if not config:
+                return display("email_request", "Configure o remetente em Skopos → Configurar e-mail Gmail antes de solicitar o link."), 503
+            email = request.form.get("email", "").strip().casefold()
+            try:
+                token = identities.request_email_reset(email)
+            except ValueError as exc:
+                return display("email_request", str(exc)), 400
+            if token:
+                recovery_email.dispatch_reset(email, token, issuer, config, app.logger)
+            message = "Se houver um perfil com senha local para esse e-mail e o envio estiver disponível, você receberá um link válido por 15 minutos. Confira o spam. Aguarde pelo menos um minuto antes de pedir novamente."
+            if request.accept_mimetypes.best == "application/json":
+                return jsonify(message=message)
+            return display("email_request", success=message)
+        return display("email_request")
+
+    @app.route("/reset-email", methods=["GET", "POST"])
+    def reset_email():
+        if request.method == "POST":
+            csrf_check()
+            try:
+                if request.form.get("password") != request.form.get("repeat"):
+                    raise ValueError("As senhas devem ser iguais.")
+                identities.reset_password_by_email(request.form.get("email", ""), request.form.get("email_token", ""), request.form.get("password", ""))
+            except ValueError as exc:
+                return display("reset_email", str(exc)), 400
+            session.clear()
+            return display("login", success="Senha local redefinida. Entre novamente com a nova senha. Gere outro código de emergência para guardar.")
+        return display("reset_email")
 
     @app.route("/account", methods=["GET", "POST"])
     def account():
